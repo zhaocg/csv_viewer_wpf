@@ -1,0 +1,18 @@
+## .NET / WPF build outputs
+bin/
+obj/
+
+## Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.userprefs
+*.userprefs.cache
+
+## NuGet
+packages/
+
+## OS generated files
+.DS_Store
+Thumbs.db
