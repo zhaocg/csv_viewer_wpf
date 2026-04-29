@@ -261,6 +261,12 @@
                               ClipToBounds="True"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                               Foreground="{DynamicResource TextPrimaryBrush}">
+                        <TreeView.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2563EB" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2563EB" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
+                        </TreeView.Resources>
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate DataType="{x:Type models:FileTreeNode}" ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal" Margin="2,2">
