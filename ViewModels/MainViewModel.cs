@@ -20,36 +20,65 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int MaxRecentFiles = 12;
     private const int MaxSearchResults = 100;
+    private const string DefaultSvnExcelPathTemplate = "svn://192.168.0.200/ccz_svn_project/branches/{0}/data/Excel";
+    private static readonly string[] DefaultSvnBranches = ["dev", "release_1.1", "release_1.1_tc", "release_1.1_build_online"];
 
     private readonly AppStateService _appStateService = new();
     private readonly AppState _appState;
     private readonly CsvFileService _csvFileService = new();
+    private readonly SvnFolderService _svnFolderService = new();
     private List<FileTreeNode> _folderSearchIndex = [];
     private ObservableCollection<FileTreeNode>? _folderTreeRoot;
     private FileTreeNode? _selectedTreeNode;
     private CsvDocumentViewModel? _selectedDocument;
     private bool _isBusy;
     private bool _hideColumnHeaders;
+    private bool _isSvnMode;
     private string _statusText = "请打开或拖拽 CSV 文件。";
     private string _folderSearchText = string.Empty;
+    private string _lastSvnUrl = string.Empty;
+    private string _svnExcelPathTemplate = DefaultSvnExcelPathTemplate;
+    private string _selectedSvnBranch = DefaultSvnBranches[0];
+    private string _newSvnBranchName = string.Empty;
+    private string? _selectedSvnBranchPreset;
     private string _selectedEncoding = "Auto";
-    private string _selectedDelimiter = "Auto";
+    private string _selectedDelimiter = "Comma (,)";
 
     public MainViewModel()
     {
         _appState = _appStateService.Load();
         _appState.RecentFilePaths ??= [];
+        _appState.RecentFiles ??= [];
+        _appState.SvnBranches ??= [];
+        if (_appState.SvnBranches.Count == 0)
+        {
+            _appState.SvnBranches.AddRange(DefaultSvnBranches);
+        }
+
         _hideColumnHeaders = _appState.HideColumnHeaders;
+        _isSvnMode = _appState.IsSvnMode;
+        _svnExcelPathTemplate = string.IsNullOrWhiteSpace(_appState.SvnExcelPathTemplate) ? DefaultSvnExcelPathTemplate : _appState.SvnExcelPathTemplate;
+        foreach (var branch in _appState.SvnBranches.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            SvnBranches.Add(branch);
+        }
+
+        _selectedSvnBranch = NormalizeOption(_appState.SelectedSvnBranch, SvnBranches.ToArray());
+        _selectedSvnBranchPreset = _selectedSvnBranch;
+        _lastSvnUrl = GetCurrentSvnRootUrl();
         _selectedEncoding = NormalizeOption(_appState.SelectedEncoding, EncodingOptions);
-        _selectedDelimiter = NormalizeOption(_appState.SelectedDelimiter, DelimiterOptions);
+        _selectedDelimiter = NormalizeOption(_appState.SelectedDelimiter, DelimiterOptions, "Comma (,)");
         LoadRecentFiles();
 
         OpenFileCommand = new RelayCommand(async _ => await OpenFileAsync(), _ => !IsBusy);
         OpenFolderCommand = new RelayCommand(async _ => await OpenFolderAsync(), _ => !IsBusy);
         ReloadCommand = new RelayCommand(async _ => await ReloadAsync(), _ => !IsBusy && SelectedDocument != null);
+        UpdateRemoteDocumentCommand = new RelayCommand(async _ => await UpdateRemoteDocumentAsync(), _ => !IsBusy && SelectedDocument?.IsRemote == true);
         ApplySearchCommand = new RelayCommand(async _ => await ApplySearchAsync(), _ => !IsBusy && SelectedDocument != null);
         ClearSearchCommand = new RelayCommand(_ => ClearSearch(), _ => !IsBusy && !string.IsNullOrEmpty(SelectedDocument?.SearchText));
         CloseDocumentCommand = new RelayCommand(CloseDocument, _ => !IsBusy);
+        AddSvnBranchCommand = new RelayCommand(_ => AddSvnBranch());
+        RemoveSvnBranchCommand = new RelayCommand(_ => RemoveSelectedSvnBranch(), _ => SvnBranches.Count > 1 && !string.IsNullOrWhiteSpace(SelectedSvnBranchPreset));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -57,15 +86,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand OpenFileCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand ReloadCommand { get; }
+    public ICommand UpdateRemoteDocumentCommand { get; }
     public ICommand ApplySearchCommand { get; }
     public ICommand ClearSearchCommand { get; }
     public ICommand CloseDocumentCommand { get; }
+    public ICommand AddSvnBranchCommand { get; }
+    public ICommand RemoveSvnBranchCommand { get; }
 
     public string[] EncodingOptions { get; } = ["Auto", "UTF-8", "GBK"];
     public string[] DelimiterOptions { get; } = ["Auto", "Comma (,)", "Semicolon (;)", "Tab", "Pipe (|)"];
     public ObservableCollection<CsvDocumentViewModel> Documents { get; } = [];
     public ObservableCollection<FileTreeNode> FolderSearchResults { get; } = [];
     public ObservableCollection<FileTreeNode> RecentFiles { get; } = [];
+    public ObservableCollection<string> SvnBranches { get; } = [];
 
     public CsvDocumentViewModel? SelectedDocument
     {
@@ -137,6 +170,77 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool HasFolderSearchText => !string.IsNullOrWhiteSpace(FolderSearchText);
 
+    public string LastSvnUrl
+    {
+        get => _lastSvnUrl;
+        private set => SetProperty(ref _lastSvnUrl, value);
+    }
+
+    public bool IsSvnMode
+    {
+        get => _isSvnMode;
+        private set
+        {
+            if (SetProperty(ref _isSvnMode, value))
+            {
+                _appState.IsSvnMode = value;
+                SaveAppState();
+                OnPropertyChanged(nameof(IsLocalFolderMode));
+            }
+        }
+    }
+
+    public bool IsLocalFolderMode => !IsSvnMode;
+
+    public string SvnExcelPathTemplate
+    {
+        get => _svnExcelPathTemplate;
+        set
+        {
+            if (SetProperty(ref _svnExcelPathTemplate, value))
+            {
+                _appState.SvnExcelPathTemplate = value;
+                LastSvnUrl = GetCurrentSvnRootUrl();
+                RefreshRecentFiles();
+                SaveAppState();
+            }
+        }
+    }
+
+    public string SelectedSvnBranch
+    {
+        get => _selectedSvnBranch;
+        set
+        {
+            if (SetProperty(ref _selectedSvnBranch, value))
+            {
+                _appState.SelectedSvnBranch = value;
+                SelectedSvnBranchPreset = value;
+                LastSvnUrl = GetCurrentSvnRootUrl();
+                RefreshRecentFiles();
+                SaveAppState();
+            }
+        }
+    }
+
+    public string NewSvnBranchName
+    {
+        get => _newSvnBranchName;
+        set => SetProperty(ref _newSvnBranchName, value);
+    }
+
+    public string? SelectedSvnBranchPreset
+    {
+        get => _selectedSvnBranchPreset;
+        set
+        {
+            if (SetProperty(ref _selectedSvnBranchPreset, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
     public bool HideColumnHeaders
     {
         get => _hideColumnHeaders;
@@ -151,6 +255,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public bool HasFrozenCells => (SelectedDocument?.FrozenRowCount ?? 0) > 0 || (SelectedDocument?.FrozenColumnCount ?? 0) > 0;
+    public bool IsRemoteDocument => SelectedDocument?.IsRemote == true;
+    public string FreezeStatusText
+    {
+        get
+        {
+            var rowCount = SelectedDocument?.FrozenRowCount ?? 0;
+            var columnCount = SelectedDocument?.FrozenColumnCount ?? 0;
+            if (rowCount == 0 && columnCount == 0)
+            {
+                return "冻结: 无";
+            }
+
+            var parts = new List<string>();
+            if (rowCount > 0)
+            {
+                parts.Add($"前 {rowCount} 行");
+            }
+
+            if (columnCount > 0)
+            {
+                parts.Add($"前 {columnCount} 列");
+            }
+
+            return $"冻结: {string.Join("，", parts)}";
+        }
+    }
 
     public bool IsBusy
     {
@@ -232,6 +362,63 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private async Task LoadSvnFileAsync(FileTreeNode node)
+    {
+        var relativePath = node.RelativePath;
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return;
+        }
+
+        var openedDocument = Documents.FirstOrDefault(document => document.IsRemote
+            && string.Equals(document.RemoteRelativePath, relativePath, StringComparison.OrdinalIgnoreCase));
+        if (openedDocument != null)
+        {
+            SelectedDocument = openedDocument;
+            AddRecentSvnFile(relativePath);
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = "正在读取 SVN 文件...";
+
+        try
+        {
+            var forcedEncoding = GetForcedEncoding();
+            var forcedDelimiter = GetForcedDelimiter();
+            var svnFileUrl = GetSvnFileUrl(relativePath);
+            var fileName = Path.GetFileName(relativePath);
+            var result = await LoadSvnCsvResultAsync(svnFileUrl, fileName, forcedEncoding, forcedDelimiter);
+            var document = new CsvDocumentViewModel(
+                result,
+                _csvFileService,
+                forcedEncoding,
+                forcedDelimiter,
+                sourcePath: svnFileUrl,
+                isRemote: true,
+                remoteRelativePath: relativePath,
+                reloadAsync: (encoding, delimiter) => LoadSvnCsvResultAsync(GetSvnFileUrl(relativePath), fileName, encoding, delimiter));
+            Documents.Add(document);
+            SelectedDocument = document;
+            AddRecentSvnFile(relativePath);
+        }
+        catch (Exception ex)
+        {
+            StatusText = "读取 SVN 文件失败。";
+            MessageBox.Show(ex.Message, "读取 SVN 文件失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<CsvLoadResult> LoadSvnCsvResultAsync(string svnFileUrl, string fileName, Encoding? forcedEncoding, string? forcedDelimiter)
+    {
+        var localPath = await _svnFolderService.CacheFileAsync(svnFileUrl, fileName);
+        return await Task.Run(() => _csvFileService.Load(localPath, forcedEncoding, forcedDelimiter));
+    }
+
     public async Task OpenFileNodeAsync(FileTreeNode? node)
     {
         if (node is not { IsDirectory: false })
@@ -239,7 +426,64 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (node.IsRemote)
+        {
+            await LoadSvnFileAsync(node);
+            return;
+        }
+
         await LoadFileAsync(node.FullPath);
+    }
+
+    public IReadOnlyList<FileTreeNode> GetQuickOpenResults(string keyword, int maxResults = MaxSearchResults)
+    {
+        var trimmedKeyword = keyword.Trim();
+        if (string.IsNullOrEmpty(trimmedKeyword))
+        {
+            return RecentFiles.Take(maxResults).ToList();
+        }
+
+        return _folderSearchIndex
+            .Where(node => IsFileSearchMatch(node, trimmedKeyword))
+            .OrderBy(node => GetSearchRank(node, trimmedKeyword))
+            .ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(node => node.FullPath, StringComparer.OrdinalIgnoreCase)
+            .Take(maxResults)
+            .ToList();
+    }
+
+    public async Task SetSvnModeAsync(bool enabled)
+    {
+        IsSvnMode = enabled;
+        if (enabled)
+        {
+            await LoadCurrentSvnFolderAsync(reloadOpenedDocuments: false);
+            return;
+        }
+
+        await LoadLastLocalFolderAsync();
+    }
+
+    public async Task ChangeSvnBranchAsync(string? branch)
+    {
+        if (string.IsNullOrWhiteSpace(branch) || string.Equals(SelectedSvnBranch, branch, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        SelectedSvnBranch = branch;
+        if (IsSvnMode)
+        {
+            await LoadCurrentSvnFolderAsync(reloadOpenedDocuments: true);
+        }
+    }
+
+    public async Task RefreshSvnModeAsync()
+    {
+        if (IsSvnMode)
+        {
+            await LoadCurrentSvnFolderAsync(reloadOpenedDocuments: false);
+        }
     }
 
     public void SetSelectedFrozenRowCount(int count)
@@ -257,8 +501,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task InitializeAsync()
     {
+        if (IsSvnMode)
+        {
+            await LoadCurrentSvnFolderAsync(reloadOpenedDocuments: false);
+            return;
+        }
+
+        await LoadLastLocalFolderAsync();
+    }
+
+    private async Task LoadLastLocalFolderAsync()
+    {
         if (string.IsNullOrWhiteSpace(_appState.LastFolderPath) || !Directory.Exists(_appState.LastFolderPath))
         {
+            FolderTreeRoot = null;
+            _folderSearchIndex = [];
+            FolderSearchResults.Clear();
+            StatusText = "请打开或拖拽 CSV 文件。";
             return;
         }
 
@@ -270,6 +529,62 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch
         {
             StatusText = "请打开或拖拽 CSV 文件。";
+        }
+    }
+
+    private async Task LoadCurrentSvnFolderAsync(bool reloadOpenedDocuments)
+    {
+        IsBusy = true;
+        LastSvnUrl = GetCurrentSvnRootUrl();
+        StatusText = $"正在加载 SVN 分支: {SelectedSvnBranch}...";
+
+        try
+        {
+            var relativeFilePaths = await _svnFolderService.ListFilesAsync(LastSvnUrl);
+            var svnFolderContext = BuildSvnFolderContext(LastSvnUrl, relativeFilePaths);
+            FolderTreeRoot = svnFolderContext.Root;
+            _folderSearchIndex = svnFolderContext.SearchFiles;
+            UpdateFolderSearchResults();
+
+            if (reloadOpenedDocuments)
+            {
+                await ReloadRemoteDocumentsForCurrentBranchAsync();
+            }
+
+            StatusText = $"SVN 分支已加载: {SelectedSvnBranch}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "加载 SVN 分支失败。";
+            MessageBox.Show(ex.Message, "加载 SVN 分支失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ReloadRemoteDocumentsForCurrentBranchAsync()
+    {
+        var failedDocuments = new List<string>();
+        foreach (var document in Documents.Where(document => document.IsRemote && !string.IsNullOrWhiteSpace(document.RemoteRelativePath)).ToList())
+        {
+            var relativePath = document.RemoteRelativePath!;
+            try
+            {
+                await document.ReloadAsync(GetForcedEncoding(), GetForcedDelimiter());
+                ConfigureRemoteDocumentSource(document, relativePath);
+            }
+            catch
+            {
+                document.MarkReloadFailed($"当前分支 {SelectedSvnBranch} 中不存在或无法读取该表，仍显示上一次加载内容。");
+                failedDocuments.Add(document.FileName);
+            }
+        }
+
+        if (failedDocuments.Count > 0)
+        {
+            MessageBox.Show($"以下 SVN 表格在当前分支中更新失败: {string.Join(", ", failedDocuments)}", "切换分支", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -305,6 +620,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             StatusText = "重新加载失败。";
             MessageBox.Show(ex.Message, "重新加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task UpdateRemoteDocumentAsync()
+    {
+        if (SelectedDocument?.IsRemote != true)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = "正在更新 SVN 表格...";
+        try
+        {
+            await SelectedDocument.ReloadAsync(GetForcedEncoding(), GetForcedDelimiter());
+            if (!string.IsNullOrWhiteSpace(SelectedDocument.RemoteRelativePath))
+            {
+                ConfigureRemoteDocumentSource(SelectedDocument, SelectedDocument.RemoteRelativePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = "更新 SVN 表格失败。";
+            MessageBox.Show(ex.Message, "更新 SVN 表格失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -387,9 +730,78 @@ public sealed class MainViewModel : INotifyPropertyChanged
             || extension.Equals(".txt", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string NormalizeOption(string? value, string[] options)
+    private static string NormalizeOption(string? value, string[] options, string? defaultValue = null)
     {
-        return !string.IsNullOrWhiteSpace(value) && options.Contains(value) ? value : options[0];
+        return !string.IsNullOrWhiteSpace(value) && options.Contains(value) ? value : defaultValue ?? options[0];
+    }
+
+    private string GetCurrentSvnRootUrl()
+    {
+        var template = string.IsNullOrWhiteSpace(SvnExcelPathTemplate) ? DefaultSvnExcelPathTemplate : SvnExcelPathTemplate;
+        return template.Contains("{0}", StringComparison.Ordinal) ? template.Replace("{0}", SelectedSvnBranch) : template;
+    }
+
+    private string GetSvnFileUrl(string relativePath)
+    {
+        return SvnFolderService.CombineUrl(GetCurrentSvnRootUrl(), relativePath);
+    }
+
+    private void ConfigureRemoteDocumentSource(CsvDocumentViewModel document, string relativePath)
+    {
+        var fileName = Path.GetFileName(relativePath);
+        document.SetRemoteSource(
+            GetSvnFileUrl(relativePath),
+            (encoding, delimiter) => LoadSvnCsvResultAsync(GetSvnFileUrl(relativePath), fileName, encoding, delimiter));
+    }
+
+    private void AddSvnBranch()
+    {
+        var branchName = NewSvnBranchName.Trim();
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            return;
+        }
+
+        if (!SvnBranches.Any(branch => string.Equals(branch, branchName, StringComparison.OrdinalIgnoreCase)))
+        {
+            SvnBranches.Add(branchName);
+            SaveSvnBranches();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        SelectedSvnBranchPreset = branchName;
+        NewSvnBranchName = string.Empty;
+    }
+
+    private void RemoveSelectedSvnBranch()
+    {
+        var branchName = SelectedSvnBranchPreset;
+        if (string.IsNullOrWhiteSpace(branchName) || SvnBranches.Count <= 1)
+        {
+            return;
+        }
+
+        var branch = SvnBranches.FirstOrDefault(value => string.Equals(value, branchName, StringComparison.OrdinalIgnoreCase));
+        if (branch == null)
+        {
+            return;
+        }
+
+        SvnBranches.Remove(branch);
+        if (string.Equals(SelectedSvnBranch, branch, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedSvnBranch = SvnBranches[0];
+        }
+
+        SelectedSvnBranchPreset = SvnBranches.FirstOrDefault();
+        SaveSvnBranches();
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void SaveSvnBranches()
+    {
+        _appState.SvnBranches = SvnBranches.ToList();
+        SaveAppState();
     }
 
     private async Task LoadFolderContextAsync(string rootPath)
@@ -527,6 +939,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         var rootPath = dialog.FolderName;
+        IsSvnMode = false;
         IsBusy = true;
         StatusText = "正在加载文件夹树...";
 
@@ -573,6 +986,99 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .OrderBy(node => node.Name)
             .ThenBy(node => node.FullPath)
             .ToList();
+    }
+
+    private static FolderContext BuildSvnFolderContext(string rootUrl, IEnumerable<string> relativeFilePaths)
+    {
+        var rootNode = new FileTreeNode
+        {
+            Name = GetSvnRootName(rootUrl),
+            FullPath = rootUrl,
+            RelativePath = string.Empty,
+            IsDirectory = true,
+            IsRemote = true
+        };
+        var directories = new Dictionary<string, FileTreeNode>(StringComparer.OrdinalIgnoreCase)
+        {
+            [string.Empty] = rootNode
+        };
+        var searchFiles = new List<FileTreeNode>();
+
+        foreach (var relativeFilePath in relativeFilePaths
+            .Select(path => path.Replace('\\', '/').Trim('/'))
+            .Where(path => !string.IsNullOrWhiteSpace(path) && IsSupportedFile(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var parts = relativeFilePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var parentNode = rootNode;
+            var currentDirectoryPath = string.Empty;
+
+            for (var i = 0; i < parts.Length - 1; i++)
+            {
+                currentDirectoryPath = string.IsNullOrEmpty(currentDirectoryPath) ? parts[i] : $"{currentDirectoryPath}/{parts[i]}";
+                if (!directories.TryGetValue(currentDirectoryPath, out var directoryNode))
+                {
+                    directoryNode = new FileTreeNode
+                    {
+                        Name = parts[i],
+                        FullPath = SvnFolderService.CombineUrl(rootUrl, currentDirectoryPath),
+                        RelativePath = currentDirectoryPath,
+                        IsDirectory = true,
+                        IsRemote = true
+                    };
+                    parentNode.Children.Add(directoryNode);
+                    directories[currentDirectoryPath] = directoryNode;
+                }
+
+                parentNode = directoryNode;
+            }
+
+            var fileNode = new FileTreeNode
+            {
+                Name = parts[^1],
+                FullPath = SvnFolderService.CombineUrl(rootUrl, relativeFilePath),
+                RelativePath = relativeFilePath,
+                IsDirectory = false,
+                IsRemote = true
+            };
+            parentNode.Children.Add(fileNode);
+            searchFiles.Add(fileNode);
+        }
+
+        SortTreeChildren(rootNode);
+
+        return new FolderContext([rootNode], searchFiles);
+    }
+
+    private static void SortTreeChildren(FileTreeNode node)
+    {
+        var orderedChildren = node.Children
+            .OrderByDescending(child => child.IsDirectory)
+            .ThenBy(child => child.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(child => child.FullPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        node.Children.Clear();
+        foreach (var child in orderedChildren)
+        {
+            node.Children.Add(child);
+            if (child.IsDirectory)
+            {
+                SortTreeChildren(child);
+            }
+        }
+    }
+
+    private static string GetSvnRootName(string rootUrl)
+    {
+        var trimmed = rootUrl.TrimEnd('/');
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            var name = Uri.UnescapeDataString(Path.GetFileName(uri.AbsolutePath));
+            return string.IsNullOrWhiteSpace(name) ? uri.Host : name;
+        }
+
+        return Path.GetFileName(trimmed);
     }
 
     private static IEnumerable<string> EnumerateSupportedFilesInDirectory(string directoryPath)
@@ -648,6 +1154,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasFrozenCells));
+        OnPropertyChanged(nameof(IsRemoteDocument));
+        OnPropertyChanged(nameof(FreezeStatusText));
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -655,12 +1163,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasFrozenCells));
+        OnPropertyChanged(nameof(IsRemoteDocument));
+        OnPropertyChanged(nameof(FreezeStatusText));
     }
 
     private void LoadRecentFiles()
     {
+        var changed = false;
+        foreach (var filePath in _appState.RecentFilePaths)
+        {
+            if (_appState.RecentFiles.Any(entry => !entry.IsRemote && string.Equals(entry.Path, filePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            if (File.Exists(filePath) && IsSupportedFile(filePath))
+            {
+                _appState.RecentFiles.Add(new RecentFileEntry { IsRemote = false, Path = filePath });
+                changed = true;
+            }
+        }
+
+        _appState.RecentFilePaths.Clear();
+        if (PruneRecentEntries())
+        {
+            changed = true;
+        }
+
         RefreshRecentFiles();
-        if (_appState.RecentFilePaths.RemoveAll(filePath => !File.Exists(filePath) || !IsSupportedFile(filePath)) > 0)
+        if (changed)
         {
             SaveAppState();
         }
@@ -673,29 +1204,71 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _appState.RecentFilePaths.RemoveAll(path => string.Equals(path, filePath, StringComparison.OrdinalIgnoreCase));
-        _appState.RecentFilePaths.Insert(0, filePath);
+        AddRecentEntry(new RecentFileEntry { IsRemote = false, Path = filePath });
+    }
 
-        if (_appState.RecentFilePaths.Count > MaxRecentFiles)
+    private void AddRecentSvnFile(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || !IsSupportedFile(relativePath))
         {
-            _appState.RecentFilePaths.RemoveRange(MaxRecentFiles, _appState.RecentFilePaths.Count - MaxRecentFiles);
+            return;
         }
 
+        AddRecentEntry(new RecentFileEntry { IsRemote = true, Path = relativePath.Replace('\\', '/').Trim('/') });
+    }
+
+    private void AddRecentEntry(RecentFileEntry entry)
+    {
+        _appState.RecentFiles.RemoveAll(item => item.IsRemote == entry.IsRemote && string.Equals(item.Path, entry.Path, StringComparison.OrdinalIgnoreCase));
+        _appState.RecentFiles.Insert(0, entry);
+        PruneRecentEntries();
         RefreshRecentFiles();
         SaveAppState();
+    }
+
+    private bool PruneRecentEntries()
+    {
+        var originalCount = _appState.RecentFiles.Count;
+        _appState.RecentFiles.RemoveAll(entry => string.IsNullOrWhiteSpace(entry.Path)
+            || (!entry.IsRemote && (!File.Exists(entry.Path) || !IsSupportedFile(entry.Path)))
+            || (entry.IsRemote && !IsSupportedFile(entry.Path)));
+
+        if (_appState.RecentFiles.Count > MaxRecentFiles)
+        {
+            _appState.RecentFiles.RemoveRange(MaxRecentFiles, _appState.RecentFiles.Count - MaxRecentFiles);
+        }
+
+        return _appState.RecentFiles.Count != originalCount;
     }
 
     private void RefreshRecentFiles()
     {
         RecentFiles.Clear();
-        foreach (var filePath in _appState.RecentFilePaths.Where(filePath => File.Exists(filePath) && IsSupportedFile(filePath)).Take(MaxRecentFiles))
+        foreach (var entry in _appState.RecentFiles.Take(MaxRecentFiles))
         {
-            RecentFiles.Add(new FileTreeNode
+            if (entry.IsRemote)
             {
-                Name = Path.GetFileName(filePath),
-                FullPath = filePath,
-                IsDirectory = false
-            });
+                var relativePath = entry.Path.Replace('\\', '/').Trim('/');
+                RecentFiles.Add(new FileTreeNode
+                {
+                    Name = Path.GetFileName(relativePath),
+                    FullPath = GetSvnFileUrl(relativePath),
+                    RelativePath = relativePath,
+                    IsDirectory = false,
+                    IsRemote = true
+                });
+                continue;
+            }
+
+            if (File.Exists(entry.Path) && IsSupportedFile(entry.Path))
+            {
+                RecentFiles.Add(new FileTreeNode
+                {
+                    Name = Path.GetFileName(entry.Path),
+                    FullPath = entry.Path,
+                    IsDirectory = false
+                });
+            }
         }
     }
 

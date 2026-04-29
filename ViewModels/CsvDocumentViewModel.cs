@@ -14,6 +14,7 @@ namespace CsvViewer.ViewModels;
 public sealed class CsvDocumentViewModel : INotifyPropertyChanged
 {
     private readonly CsvFileService _csvFileService;
+    private Func<Encoding?, string?, Task<CsvLoadResult>>? _reloadAsync;
     private Encoding? _forcedEncoding;
     private string? _forcedDelimiter;
     private DataTable _sourceTable;
@@ -28,13 +29,24 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
     private int _frozenRowCount;
     private int _frozenColumnCount;
 
-    public CsvDocumentViewModel(CsvLoadResult result, CsvFileService csvFileService, Encoding? forcedEncoding, string? forcedDelimiter)
+    public CsvDocumentViewModel(
+        CsvLoadResult result,
+        CsvFileService csvFileService,
+        Encoding? forcedEncoding,
+        string? forcedDelimiter,
+        string? sourcePath = null,
+        bool isRemote = false,
+        string? remoteRelativePath = null,
+        Func<Encoding?, string?, Task<CsvLoadResult>>? reloadAsync = null)
     {
         _csvFileService = csvFileService;
+        _reloadAsync = reloadAsync;
         _forcedEncoding = forcedEncoding;
         _forcedDelimiter = forcedDelimiter;
-        FilePath = result.FilePath;
-        FileName = Path.GetFileName(result.FilePath);
+        FilePath = sourcePath ?? result.FilePath;
+        IsRemote = isRemote;
+        RemoteRelativePath = remoteRelativePath;
+        FileName = GetFileName(FilePath);
         FileSizeText = FormatFileSize(result.FileSize);
         ColumnCountText = result.Table.Columns.Count.ToString("N0");
         EncodingName = result.Encoding.WebName.ToUpperInvariant();
@@ -48,7 +60,9 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string FilePath { get; }
+    public string FilePath { get; private set; }
+    public bool IsRemote { get; }
+    public string? RemoteRelativePath { get; }
     public string FileName { get; private set; }
     public string FileSizeText { get; private set; }
     public string ColumnCountText { get; private set; }
@@ -114,8 +128,24 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         _forcedEncoding = forcedEncoding;
         _forcedDelimiter = forcedDelimiter;
         StatusText = "正在重新加载文件...";
-        var result = await Task.Run(() => _csvFileService.Load(FilePath, _forcedEncoding, _forcedDelimiter));
+        var result = _reloadAsync != null
+            ? await _reloadAsync(_forcedEncoding, _forcedDelimiter)
+            : await Task.Run(() => _csvFileService.Load(FilePath, _forcedEncoding, _forcedDelimiter));
         ApplyReloadedResult(result);
+    }
+
+    public void SetRemoteSource(string sourcePath, Func<Encoding?, string?, Task<CsvLoadResult>> reloadAsync)
+    {
+        FilePath = sourcePath;
+        _reloadAsync = reloadAsync;
+        FileName = GetFileName(FilePath);
+        OnPropertyChanged(nameof(FilePath));
+        OnPropertyChanged(nameof(FileName));
+    }
+
+    public void MarkReloadFailed(string message)
+    {
+        StatusText = message;
     }
 
     public async Task ApplySearchAsync()
@@ -153,7 +183,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
     private void ApplyReloadedResult(CsvLoadResult result)
     {
         _sourceTable = result.Table;
-        FileName = Path.GetFileName(result.FilePath);
+        FileName = GetFileName(FilePath);
         FileSizeText = FormatFileSize(result.FileSize);
         ColumnCountText = result.Table.Columns.Count.ToString("N0");
         EncodingName = result.Encoding.WebName.ToUpperInvariant();
@@ -244,6 +274,14 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
             "|" => "Pipe",
             _ => delimiter
         };
+    }
+
+    private static string GetFileName(string pathOrUrl)
+    {
+        var normalizedPath = pathOrUrl.TrimEnd('/', '\\');
+        var fileNameStartIndex = normalizedPath.LastIndexOfAny(['/', '\\']) + 1;
+        var fileName = fileNameStartIndex > 0 ? normalizedPath[fileNameStartIndex..] : Path.GetFileName(normalizedPath);
+        return Uri.UnescapeDataString(fileName);
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

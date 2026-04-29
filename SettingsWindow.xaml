@@ -2,11 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置"
-        Height="290"
-        Width="380"
-        MinHeight="290"
-        MinWidth="380"
-        ResizeMode="NoResize"
+        Height="560"
+        Width="560"
+        MinHeight="520"
+        MinWidth="520"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -27,35 +26,71 @@
                    Margin="0,6,0,14"
                    TextTrimming="CharacterEllipsis" />
 
-        <StackPanel Grid.Row="2">
-            <TextBlock Text="编码" Margin="0,0,0,4" />
-            <ComboBox ItemsSource="{Binding EncodingOptions}"
-                      SelectedItem="{Binding SelectedEncoding, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                      Width="180"
-                      HorizontalAlignment="Left"
-                      Margin="0,0,0,12" />
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="编码" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding EncodingOptions}"
+                          SelectedItem="{Binding SelectedEncoding, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Width="180"
+                          HorizontalAlignment="Left"
+                          Margin="0,0,0,12" />
 
-            <TextBlock Text="分隔符" Margin="0,0,0,4" />
-            <ComboBox ItemsSource="{Binding DelimiterOptions}"
-                      SelectedItem="{Binding SelectedDelimiter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                      Width="180"
-                      HorizontalAlignment="Left"
-                      Margin="0,0,0,16" />
+                <TextBlock Text="分隔符" Margin="0,0,0,4" />
+                <ComboBox ItemsSource="{Binding DelimiterOptions}"
+                          SelectedItem="{Binding SelectedDelimiter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Width="180"
+                          HorizontalAlignment="Left"
+                          Margin="0,0,0,16" />
 
-            <CheckBox Content="隐藏表头（列名行）"
-                      IsChecked="{Binding HideColumnHeaders, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <TextBlock Text="设置会自动保存；编码和分隔符会在打开或重新加载文件时生效。"
-                       Foreground="#667085"
-                       FontSize="12"
-                       TextWrapping="Wrap"
-                       Margin="22,8,0,0" />
-        </StackPanel>
+                <CheckBox Content="隐藏表头（列名行）"
+                          IsChecked="{Binding HideColumnHeaders, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <Separator Margin="0,18,0,16" />
+
+                <TextBlock Text="SVN Excel 路径模板" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBox Text="{Binding SvnExcelPathTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalContentAlignment="Center" />
+                <TextBlock Text="使用 {0} 作为分支名占位符，例如 svn://192.168.0.200/ccz_svn_project/branches/{0}/data/Excel"
+                           Foreground="#667085"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,14" />
+
+                <TextBlock Text="分支预设" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <ListBox ItemsSource="{Binding SvnBranches}"
+                         SelectedItem="{Binding SelectedSvnBranchPreset, Mode=TwoWay}"
+                         Height="120"
+                         BorderBrush="#D8DEE9" />
+
+                <DockPanel Margin="0,8,0,0" LastChildFill="True">
+                    <Button DockPanel.Dock="Right"
+                            Content="添加"
+                            Command="{Binding AddSvnBranchCommand}"
+                            Width="72"
+                            Margin="8,0,0,0" />
+                    <Button DockPanel.Dock="Right"
+                            Content="删除选中"
+                            Command="{Binding RemoveSvnBranchCommand}"
+                            Width="82"
+                            Margin="8,0,0,0" />
+                    <TextBox Text="{Binding NewSvnBranchName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalContentAlignment="Center" />
+                </DockPanel>
+
+                <TextBlock Text="设置会自动保存；SVN 路径模板和分支预设会在开启 SVN 模式或切换分支时生效。"
+                           Foreground="#667085"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Margin="0,12,0,0" />
+            </StackPanel>
+        </ScrollViewer>
 
         <Button Grid.Row="3"
                 Content="关闭"
                 Width="78"
                 HorizontalAlignment="Right"
                 IsCancel="True"
+                Margin="0,14,0,0"
                 Click="Close_Click" />
     </Grid>
 </Window>

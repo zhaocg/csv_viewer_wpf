@@ -9,7 +9,9 @@ public sealed class FileTreeNode
 {
     public string Name { get; init; } = string.Empty;
     public string FullPath { get; init; } = string.Empty;
+    public string? RelativePath { get; init; }
     public bool IsDirectory { get; init; }
+    public bool IsRemote { get; init; }
     public ObservableCollection<FileTreeNode> Children { get; } = [];
 
     /// <summary>
