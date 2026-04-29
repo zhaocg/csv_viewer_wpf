@@ -8,6 +8,7 @@ public sealed class AppState
     public bool HideColumnHeaders { get; set; }
     public string? SelectedEncoding { get; set; }
     public string? SelectedDelimiter { get; set; }
+    public string? SelectedTheme { get; set; }
     public string? LastSvnUrl { get; set; }
     public bool IsSvnMode { get; set; }
     public string? SvnExcelPathTemplate { get; set; }

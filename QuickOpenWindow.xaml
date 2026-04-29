@@ -1,17 +1,26 @@
 <Window x:Class="CsvViewer.QuickOpenWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="快速打开"
         Width="720"
         Height="460"
         MinWidth="560"
         MinHeight="360"
-        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        AllowsTransparency="True"
         ShowInTaskbar="False"
-        Background="#1F2430"
+        Background="Transparent"
         Foreground="#E5E7EB"
         PreviewKeyDown="Window_PreviewKeyDown">
-    <Border BorderBrush="#3B4252" BorderThickness="1" Padding="14">
+    <Border BorderBrush="#334155" BorderThickness="1" CornerRadius="18" Padding="18">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#111827" Offset="0" />
+                <GradientStop Color="#16213A" Offset="0.65" />
+                <GradientStop Color="#0F172A" Offset="1" />
+            </LinearGradientBrush>
+        </Border.Background>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -21,28 +30,31 @@
 
             <TextBox x:Name="SearchTextBox"
                      Grid.Row="0"
-                     Height="38"
-                     FontSize="16"
-                     Padding="10,0"
+                     Height="42"
+                     FontSize="17"
+                     Padding="12,0"
                      VerticalContentAlignment="Center"
-                     Background="#111827"
+                     Background="#0B1220"
                      Foreground="#F9FAFB"
-                     BorderBrush="#4B5563"
+                     BorderBrush="#475569"
                      CaretBrush="#F9FAFB"
                      TextChanged="SearchTextBox_TextChanged" />
 
             <TextBlock x:Name="HintTextBlock"
                        Grid.Row="1"
                        Text="输入文件名进行模糊搜索，Enter 打开，Esc 关闭。空输入显示最近打开。"
-                       Foreground="#9CA3AF"
+                       Foreground="#94A3B8"
                        FontSize="12"
                        Margin="2,8,0,8" />
 
             <ListBox x:Name="ResultsListBox"
                      Grid.Row="2"
-                     Background="#111827"
+                     Background="#0B1220"
                      Foreground="#E5E7EB"
-                     BorderBrush="#374151"
+                     BorderBrush="#26354D"
+                     Padding="6"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                      MouseDoubleClick="ResultsListBox_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
@@ -52,15 +64,15 @@
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" CornerRadius="3">
+                                    <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" CornerRadius="9" Padding="2">
                                         <ContentPresenter />
                                     </Border>
                                     <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemBorder" Property="Background" Value="#1E293B" />
+                                        </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
                                             <Setter TargetName="ItemBorder" Property="Background" Value="#2563EB" />
-                                        </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="ItemBorder" Property="Background" Value="#374151" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -75,7 +87,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="SVN" Foreground="#7DD3FC" FontWeight="SemiBold" FontSize="11" Margin="0,2,8,0">
+                            <TextBlock Grid.Column="0" Text="SVN" Foreground="#67E8F9" FontWeight="SemiBold" FontSize="11" Margin="0,2,8,0">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="Visibility" Value="Collapsed" />

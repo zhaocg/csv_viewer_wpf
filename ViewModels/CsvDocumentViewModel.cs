@@ -23,6 +23,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
     private DataView? _frozenTableView;
     private DataView? _scrollableTableView;
     private string _statusText;
+    private string _displayMessage = string.Empty;
     private string _searchText = string.Empty;
     private string _rowCountText;
     private bool _hasFrozenRows;
@@ -117,6 +118,20 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _statusText, value);
     }
 
+    public string DisplayMessage
+    {
+        get => _displayMessage;
+        private set
+        {
+            if (SetProperty(ref _displayMessage, value))
+            {
+                OnPropertyChanged(nameof(HasDisplayMessage));
+            }
+        }
+    }
+
+    public bool HasDisplayMessage => !string.IsNullOrWhiteSpace(DisplayMessage);
+
     public string RowCountText
     {
         get => _rowCountText;
@@ -148,6 +163,29 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         StatusText = message;
     }
 
+    public void MarkUnavailable(string message)
+    {
+        _sourceTable = new DataTable();
+        _activeTable = _sourceTable;
+        TableView = _activeTable.DefaultView;
+        FrozenTableView = null;
+        ScrollableTableView = _activeTable.DefaultView;
+        FrozenRowCount = 0;
+        FrozenColumnCount = 0;
+        HasFrozenRows = false;
+        RowCountText = "0";
+        ColumnCountText = "0";
+        FileSizeText = "-";
+        EncodingName = "-";
+        DelimiterName = "-";
+        DisplayMessage = message;
+        StatusText = message;
+        OnPropertyChanged(nameof(FileSizeText));
+        OnPropertyChanged(nameof(ColumnCountText));
+        OnPropertyChanged(nameof(EncodingName));
+        OnPropertyChanged(nameof(DelimiterName));
+    }
+
     public async Task ApplySearchAsync()
     {
         var keyword = SearchText.Trim();
@@ -176,7 +214,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
 
     public void SetFrozenRowCount(int count)
     {
-        FrozenRowCount = Math.Clamp(count, 0, _activeTable.Rows.Count);
+        FrozenRowCount = Math.Clamp(count, 0, _sourceTable.Rows.Count);
         RebuildSplitViews();
     }
 
@@ -188,6 +226,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         ColumnCountText = result.Table.Columns.Count.ToString("N0");
         EncodingName = result.Encoding.WebName.ToUpperInvariant();
         DelimiterName = FormatDelimiter(result.Delimiter);
+        DisplayMessage = string.Empty;
         SearchText = string.Empty;
         RowCountText = result.Table.Rows.Count.ToString("N0");
         FrozenColumnCount = Math.Clamp(FrozenColumnCount, 0, result.Table.Columns.Count);
@@ -209,7 +248,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
 
     private void RebuildSplitViews()
     {
-        FrozenRowCount = Math.Clamp(FrozenRowCount, 0, _activeTable.Rows.Count);
+        FrozenRowCount = Math.Clamp(FrozenRowCount, 0, _sourceTable.Rows.Count);
         HasFrozenRows = FrozenRowCount > 0;
 
         if (FrozenRowCount == 0)
@@ -219,8 +258,10 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
             return;
         }
 
-        FrozenTableView = CopyRows(_activeTable, 0, FrozenRowCount).DefaultView;
-        ScrollableTableView = CopyRows(_activeTable, FrozenRowCount, _activeTable.Rows.Count - FrozenRowCount).DefaultView;
+        FrozenTableView = CopyRows(_sourceTable, 0, FrozenRowCount).DefaultView;
+        ScrollableTableView = ReferenceEquals(_activeTable, _sourceTable)
+            ? CopyRows(_activeTable, FrozenRowCount, _activeTable.Rows.Count - FrozenRowCount).DefaultView
+            : _activeTable.DefaultView;
     }
 
     private static DataTable FilterTable(DataTable table, string keyword)

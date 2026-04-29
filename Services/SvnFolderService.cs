@@ -7,6 +7,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using CsvViewer.Models;
 
 namespace CsvViewer.Services;
 
@@ -58,9 +59,116 @@ public sealed class SvnFolderService
         return localPath;
     }
 
+    public async Task<IReadOnlyList<SvnLogEntry>> GetLogAsync(string svnFileUrl, int limit, long? startRevision = null)
+    {
+        if (string.IsNullOrWhiteSpace(svnFileUrl))
+        {
+            throw new ArgumentException("SVN 文件链接为空。", nameof(svnFileUrl));
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "日志条数必须大于 0。");
+        }
+
+        var arguments = new List<string> { "log", svnFileUrl.Trim(), "-v", "-l", limit.ToString(), "--non-interactive" };
+        if (startRevision is > 0)
+        {
+            arguments.Add("-r");
+            arguments.Add($"{startRevision}:1");
+        }
+
+        var output = await RunSvnTextAsync(arguments.ToArray());
+        return ParseTextLogEntries(output);
+    }
+
     public static string CombineUrl(string rootUrl, string relativePath)
     {
         return $"{rootUrl.TrimEnd('/')}/{relativePath.Replace('\\', '/').TrimStart('/')}";
+    }
+
+    private static IReadOnlyList<SvnLogEntry> ParseTextLogEntries(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        var entries = new List<SvnLogEntry>();
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        var blocks = normalized.Split("------------------------------------------------------------------------", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var block in blocks)
+        {
+            var lines = block.Split('\n');
+            if (lines.Length == 0)
+            {
+                continue;
+            }
+
+            var headerParts = lines[0].Split('|', 4, StringSplitOptions.TrimEntries);
+            if (headerParts.Length < 3 || !long.TryParse(headerParts[0].TrimStart('r'), out var revision))
+            {
+                continue;
+            }
+
+            var changedPaths = new List<string>();
+            var messageLines = new List<string>();
+            var readingPaths = false;
+            var readingMessage = false;
+
+            for (var i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (line.StartsWith("Changed paths:", StringComparison.OrdinalIgnoreCase))
+                {
+                    readingPaths = true;
+                    continue;
+                }
+
+                if (readingPaths)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        readingPaths = false;
+                        readingMessage = true;
+                        continue;
+                    }
+
+                    changedPaths.Add(line.Trim());
+                    continue;
+                }
+
+                if (readingMessage || !string.IsNullOrWhiteSpace(line))
+                {
+                    readingMessage = true;
+                    messageLines.Add(line);
+                }
+            }
+
+            entries.Add(new SvnLogEntry
+            {
+                Revision = revision,
+                Author = headerParts[1],
+                Date = ParseSvnLogDate(headerParts[2]),
+                Message = string.Join(Environment.NewLine, messageLines).Trim(),
+                ChangedPaths = changedPaths
+            });
+        }
+
+        return entries.OrderByDescending(entry => entry.Revision).ToArray();
+    }
+
+    private static DateTimeOffset ParseSvnLogDate(string value)
+    {
+        var dateText = value;
+        var parenthesisIndex = dateText.IndexOf('(');
+        if (parenthesisIndex >= 0)
+        {
+            dateText = dateText[..parenthesisIndex].Trim();
+        }
+
+        return DateTimeOffset.TryParse(dateText, out var date) ? date : DateTimeOffset.MinValue;
     }
 
     private static async Task<string> RunSvnTextAsync(string[] arguments)

@@ -7,7 +7,8 @@
         MinHeight="520"
         MinWidth="520"
         WindowStartupLocation="CenterOwner">
-    <Grid Margin="18">
+    <Border Margin="18" Padding="22" Style="{StaticResource CardBorderStyle}">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -18,49 +19,57 @@
         <TextBlock Grid.Row="0"
                    Text="全局设置"
                    FontWeight="SemiBold"
-                   FontSize="15" />
+                   FontSize="20"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
 
         <TextBlock Grid.Row="1"
                    Text="这些设置会应用到所有已打开和后续打开的表格。"
-                   Foreground="#667085"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
                    Margin="0,6,0,14"
                    TextTrimming="CharacterEllipsis" />
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock Text="编码" Margin="0,0,0,4" />
-                <ComboBox ItemsSource="{Binding EncodingOptions}"
-                          SelectedItem="{Binding SelectedEncoding, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                          Width="180"
+                <TextBlock Text="主题" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+                <ComboBox ItemsSource="{Binding ThemeOptions}"
+                          SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Width="220"
                           HorizontalAlignment="Left"
                           Margin="0,0,0,12" />
 
-                <TextBlock Text="分隔符" Margin="0,0,0,4" />
+                <TextBlock Text="编码" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+                <ComboBox ItemsSource="{Binding EncodingOptions}"
+                          SelectedItem="{Binding SelectedEncoding, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Width="220"
+                          HorizontalAlignment="Left"
+                          Margin="0,0,0,12" />
+
+                <TextBlock Text="分隔符" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
                 <ComboBox ItemsSource="{Binding DelimiterOptions}"
                           SelectedItem="{Binding SelectedDelimiter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                          Width="180"
+                          Width="220"
                           HorizontalAlignment="Left"
                           Margin="0,0,0,16" />
 
                 <CheckBox Content="隐藏表头（列名行）"
                           IsChecked="{Binding HideColumnHeaders, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                <Separator Margin="0,18,0,16" />
+                <Separator Margin="0,18,0,16" Background="{DynamicResource AppBorderBrush}" />
 
-                <TextBlock Text="SVN Excel 路径模板" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBlock Text="SVN Excel 路径模板" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
                 <TextBox Text="{Binding SvnExcelPathTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          VerticalContentAlignment="Center" />
                 <TextBlock Text="使用 {0} 作为分支名占位符，例如 svn://192.168.0.200/ccz_svn_project/branches/{0}/data/Excel"
-                           Foreground="#667085"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="12"
                            TextWrapping="Wrap"
                            Margin="0,6,0,14" />
 
-                <TextBlock Text="分支预设" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBlock Text="分支预设" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
                 <ListBox ItemsSource="{Binding SvnBranches}"
                          SelectedItem="{Binding SelectedSvnBranchPreset, Mode=TwoWay}"
                          Height="120"
-                         BorderBrush="#D8DEE9" />
+                         BorderBrush="{DynamicResource AppBorderBrush}" />
 
                 <DockPanel Margin="0,8,0,0" LastChildFill="True">
                     <Button DockPanel.Dock="Right"
@@ -78,7 +87,7 @@
                 </DockPanel>
 
                 <TextBlock Text="设置会自动保存；SVN 路径模板和分支预设会在开启 SVN 模式或切换分支时生效。"
-                           Foreground="#667085"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="12"
                            TextWrapping="Wrap"
                            Margin="0,12,0,0" />
@@ -91,6 +100,8 @@
                 HorizontalAlignment="Right"
                 IsCancel="True"
                 Margin="0,14,0,0"
+                Style="{StaticResource PrimaryButtonStyle}"
                 Click="Close_Click" />
     </Grid>
+    </Border>
 </Window>

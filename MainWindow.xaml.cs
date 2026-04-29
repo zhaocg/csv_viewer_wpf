@@ -51,11 +51,29 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key == System.Windows.Input.Key.P && (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != System.Windows.Input.ModifierKeys.Control)
+        {
+            return;
+        }
+
+        if (e.Key == System.Windows.Input.Key.P)
         {
             OpenQuickOpenWindow();
             e.Handled = true;
+            return;
         }
+
+        if (e.Key == System.Windows.Input.Key.F)
+        {
+            FocusSearchBox();
+            e.Handled = true;
+        }
+    }
+
+    private void FocusSearchBox()
+    {
+        SearchTextBox.Focus();
+        SearchTextBox.SelectAll();
     }
 
     private void OpenQuickOpenWindow()
@@ -70,6 +88,11 @@ public partial class MainWindow : Window
             Owner = this
         };
         quickOpenWindow.ShowDialog();
+    }
+
+    private void QuickOpen_Click(object sender, RoutedEventArgs e)
+    {
+        OpenQuickOpenWindow();
     }
 
     private async void Window_Drop(object sender, DragEventArgs e)
@@ -93,6 +116,29 @@ public partial class MainWindow : Window
     private void ClearFreeze_Click(object sender, RoutedEventArgs e)
     {
         GetActiveDocumentGrid()?.ClearFreeze();
+    }
+
+    private void PaintSelectedCells_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetActiveDocumentGrid()?.PaintSelectedCells() != true)
+        {
+            MessageBox.Show("请先选中要刷色的单元格。", "刷色", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private void SvnLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { SelectedDocument.IsRemote: true } viewModel
+            || string.IsNullOrWhiteSpace(viewModel.SelectedDocument.FilePath))
+        {
+            return;
+        }
+
+        var logWindow = new SvnLogWindow(viewModel.SelectedDocument.FilePath)
+        {
+            Owner = this
+        };
+        logWindow.ShowDialog();
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)

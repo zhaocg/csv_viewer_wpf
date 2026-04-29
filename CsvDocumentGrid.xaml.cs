@@ -1,9 +1,12 @@
 using CsvViewer.Services;
 using CsvViewer.ViewModels;
 using System.ComponentModel;
+using System.Data;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -12,12 +15,47 @@ namespace CsvViewer;
 
 public partial class CsvDocumentGrid : UserControl
 {
+    public static readonly DependencyProperty CellPaintVersionProperty = DependencyProperty.Register(
+        nameof(CellPaintVersion),
+        typeof(int),
+        typeof(CsvDocumentGrid),
+        new PropertyMetadata(0));
+
+    public static readonly DependencyProperty IsCellPaintedProperty = DependencyProperty.RegisterAttached(
+        "IsCellPainted",
+        typeof(bool),
+        typeof(CsvDocumentGrid),
+        new PropertyMetadata(false));
+
     private readonly ClipboardService _clipboardService = new();
-    private readonly List<DataGridColumn> _widthObservedColumns = [];
+    private readonly List<DataGridColumn> _mainWidthObservedColumns = [];
+    private readonly List<DataGridColumn> _frozenWidthObservedColumns = [];
+    private readonly Dictionary<PaintedCellKey, Brush> _paintedCellBrushes = [];
+    private readonly CellPaintBrushConverter _cellPaintBrushConverter = new();
     private readonly Style _searchHighlightTextStyle;
+    private IReadOnlyList<double>? _pendingColumnWidths;
     private bool _syncingHorizontalScroll;
     private bool _syncingColumnWidths;
-    private bool _columnLayoutSyncQueued;
+    private bool _syncingSelection;
+    private bool _columnWidthRestoreQueued;
+
+    private static readonly Brush PaintedCellBrush = CreateFrozenBrush(Color.FromRgb(254, 240, 138));
+
+    public int CellPaintVersion
+    {
+        get => (int)GetValue(CellPaintVersionProperty);
+        set => SetValue(CellPaintVersionProperty, value);
+    }
+
+    public static void SetIsCellPainted(DependencyObject element, bool value)
+    {
+        element.SetValue(IsCellPaintedProperty, value);
+    }
+
+    public static bool GetIsCellPainted(DependencyObject element)
+    {
+        return (bool)element.GetValue(IsCellPaintedProperty);
+    }
 
     public CsvDocumentGrid()
     {
@@ -31,22 +69,36 @@ public partial class CsvDocumentGrid : UserControl
         _clipboardService.CopySelectedCells(FrozenRowsDataGrid.IsKeyboardFocusWithin ? FrozenRowsDataGrid : CsvDataGrid);
     }
 
+    public bool PaintSelectedCells()
+    {
+        var painted = PaintSelectedCells(FrozenRowsDataGrid) | PaintSelectedCells(CsvDataGrid);
+        if (painted)
+        {
+            CellPaintVersion++;
+        }
+
+        return painted;
+    }
+
     public bool FreezeToCurrentCell()
     {
         var rowCount = GetCurrentCellRowFreezeCount();
         var columnCount = GetCurrentCellColumnFreezeCount();
-        if (rowCount == 0 || columnCount == 0)
+        if (rowCount == 0 && columnCount == 0)
         {
             return false;
         }
 
         if (DataContext is CsvDocumentViewModel document)
         {
+            BeginColumnWidthRestore();
             document.SetFrozenRowCount(rowCount);
             document.FrozenColumnCount = columnCount;
         }
 
         ApplyFrozenColumnCount(columnCount);
+        RestorePendingColumnWidths();
+        QueuePendingColumnWidthRestore();
         return true;
     }
 
@@ -54,11 +106,14 @@ public partial class CsvDocumentGrid : UserControl
     {
         if (DataContext is CsvDocumentViewModel document)
         {
+            BeginColumnWidthRestore();
             document.SetFrozenRowCount(0);
             document.FrozenColumnCount = 0;
         }
 
         ApplyFrozenColumnCount(0);
+        RestorePendingColumnWidths();
+        QueuePendingColumnWidthRestore();
     }
 
     public void ApplyDocumentFrozenState()
@@ -68,6 +123,8 @@ public partial class CsvDocumentGrid : UserControl
 
     private void CsvDocumentGrid_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        _paintedCellBrushes.Clear();
+        CellPaintVersion++;
         ApplyDocumentFrozenState();
         QueueColumnLayoutSync();
     }
@@ -82,10 +139,42 @@ public partial class CsvDocumentGrid : UserControl
         e.Row.Header = e.Row.GetIndex() + 1;
     }
 
+    private void FrozenRowsDataGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
+    {
+        ClearOtherGridSelection(FrozenRowsDataGrid, CsvDataGrid);
+    }
+
+    private void CsvDataGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
+    {
+        ClearOtherGridSelection(CsvDataGrid, FrozenRowsDataGrid);
+    }
+
+    private void ClearOtherGridSelection(DataGrid source, DataGrid target)
+    {
+        if (_syncingSelection || source.SelectedCells.Count == 0 || target.SelectedCells.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _syncingSelection = true;
+            target.SelectedCells.Clear();
+            target.UnselectAll();
+            target.CurrentCell = default;
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+    }
+
     private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
     {
         if (e.Column is DataGridTextColumn textColumn)
         {
+            textColumn.SortMemberPath = e.PropertyName;
+            textColumn.CellStyle = CreateCellPaintStyle(e.PropertyName);
             textColumn.ElementStyle = _searchHighlightTextStyle;
         }
     }
@@ -93,6 +182,7 @@ public partial class CsvDocumentGrid : UserControl
     private void CsvDataGrid_AutoGeneratedColumns(object? sender, EventArgs e)
     {
         ApplyDocumentFrozenState();
+        RestorePendingColumnWidths();
         RegisterColumnWidthSync();
         QueueColumnLayoutSync();
     }
@@ -100,6 +190,7 @@ public partial class CsvDocumentGrid : UserControl
     private void FrozenRowsDataGrid_AutoGeneratedColumns(object? sender, EventArgs e)
     {
         ApplyDocumentFrozenState();
+        RestorePendingColumnWidths();
         RegisterColumnWidthSync();
         QueueColumnLayoutSync();
     }
@@ -139,7 +230,7 @@ public partial class CsvDocumentGrid : UserControl
                 return 0;
             }
 
-            return dataGrid == FrozenRowsDataGrid ? rowIndex + 1 : GetFrozenRowCount() + rowIndex + 1;
+            return dataGrid == FrozenRowsDataGrid ? rowIndex : GetFrozenRowCount() + rowIndex;
         }
 
         return 0;
@@ -147,7 +238,7 @@ public partial class CsvDocumentGrid : UserControl
 
     private int GetCurrentCellColumnFreezeCount()
     {
-        return TryGetActiveCell(out _, out var column, out _) ? column.DisplayIndex + 1 : 0;
+        return TryGetActiveCell(out _, out var column, out _) ? column.DisplayIndex : 0;
     }
 
     private bool TryGetActiveCell(out DataGrid dataGrid, out DataGridColumn column, out object item)
@@ -234,25 +325,276 @@ public partial class CsvDocumentGrid : UserControl
         SyncHorizontalScroll(CsvDataGrid, e.HorizontalOffset, e.HorizontalChange);
     }
 
-    private void RegisterColumnWidthSync()
+    private void DataGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var descriptor = DependencyPropertyDescriptor.FromProperty(DataGridColumn.ActualWidthProperty, typeof(DataGridColumn));
-        foreach (var column in _widthObservedColumns)
-        {
-            descriptor.RemoveValueChanged(column, MainColumnWidthChanged);
-        }
-
-        _widthObservedColumns.Clear();
-
-        if (CsvDataGrid.Columns.Count == 0 || FrozenRowsDataGrid.Columns.Count == 0)
+        if (e.OriginalSource is not DependencyObject source || FindVisualParent<Thumb>(source) != null)
         {
             return;
         }
 
+        if (e.ClickCount == 2)
+        {
+            var rowHeader = FindVisualParent<DataGridRowHeader>(source);
+            if (rowHeader != null && FindVisualParent<DataGrid>(rowHeader) is DataGrid rowHeaderDataGrid)
+            {
+                SelectRowAndFitColumns(rowHeaderDataGrid, rowHeader.DataContext);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        var header = FindVisualParent<DataGridColumnHeader>(source);
+        if (header?.Column == null)
+        {
+            return;
+        }
+
+        var columnName = GetColumnName(header.Column);
+        if (string.IsNullOrEmpty(columnName))
+        {
+            return;
+        }
+
+        SelectWholeColumn(columnName);
+        e.Handled = true;
+    }
+
+    private void SelectRowAndFitColumns(DataGrid dataGrid, object? rowItem)
+    {
+        if (rowItem is not DataRowView rowView)
+        {
+            return;
+        }
+
+        dataGrid.SelectedCells.Clear();
+        var currentCellSet = false;
+        foreach (var column in dataGrid.Columns.OrderBy(column => column.DisplayIndex))
+        {
+            if (!currentCellSet)
+            {
+                dataGrid.CurrentCell = new DataGridCellInfo(rowItem, column);
+                currentCellSet = true;
+            }
+
+            dataGrid.SelectedCells.Add(new DataGridCellInfo(rowItem, column));
+        }
+
+        FitColumnsToRow(dataGrid, rowView);
+    }
+
+    private void FitColumnsToRow(DataGrid sourceGrid, DataRowView rowView)
+    {
+        var widths = new List<double>(sourceGrid.Columns.Count);
+        foreach (var column in sourceGrid.Columns)
+        {
+            var columnName = GetColumnName(column);
+            widths.Add(string.IsNullOrEmpty(columnName) ? column.ActualWidth : MeasureCellWidth(sourceGrid, rowView, columnName));
+        }
+
+        ApplyColumnWidths(CsvDataGrid, widths);
+        ApplyColumnWidths(FrozenRowsDataGrid, widths);
+    }
+
+    private double MeasureCellWidth(DataGrid dataGrid, DataRowView rowView, string columnName)
+    {
+        var text = rowView.Row.Table.Columns.Contains(columnName) ? Convert.ToString(rowView[columnName]) ?? string.Empty : string.Empty;
+        var formattedText = new FormattedText(
+            text.Length == 0 ? " " : text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            new Typeface(dataGrid.FontFamily, dataGrid.FontStyle, dataGrid.FontWeight, dataGrid.FontStretch),
+            dataGrid.FontSize,
+            Brushes.Black,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+        return Math.Max(48, Math.Ceiling(formattedText.WidthIncludingTrailingWhitespace) + 24);
+    }
+
+    private void SelectWholeColumn(string columnName)
+    {
+        FrozenRowsDataGrid.SelectedCells.Clear();
+        CsvDataGrid.SelectedCells.Clear();
+
+        SelectColumnCells(FrozenRowsDataGrid, columnName);
+        SelectColumnCells(CsvDataGrid, columnName);
+        CsvDataGrid.Focus();
+    }
+
+    private static void SelectColumnCells(DataGrid dataGrid, string columnName)
+    {
+        var column = FindColumn(dataGrid, columnName);
+        if (column == null)
+        {
+            return;
+        }
+
+        var currentCellSet = false;
+        foreach (var item in dataGrid.Items)
+        {
+            if (item == CollectionView.NewItemPlaceholder)
+            {
+                continue;
+            }
+
+            if (!currentCellSet)
+            {
+                dataGrid.CurrentCell = new DataGridCellInfo(item, column);
+                currentCellSet = true;
+            }
+
+            dataGrid.SelectedCells.Add(new DataGridCellInfo(item, column));
+        }
+    }
+
+    private bool PaintSelectedCells(DataGrid dataGrid)
+    {
+        var painted = false;
+        foreach (var selectedCell in dataGrid.SelectedCells.ToList())
+        {
+            if (selectedCell.Item is not DataRowView rowView || selectedCell.Column == null)
+            {
+                continue;
+            }
+
+            var rowIndex = GetVisualRowIndex(dataGrid, rowView);
+            var columnName = GetColumnName(selectedCell.Column);
+            if (rowIndex < 0 || string.IsNullOrEmpty(columnName))
+            {
+                continue;
+            }
+
+            _paintedCellBrushes[new PaintedCellKey(rowIndex, columnName)] = PaintedCellBrush;
+            painted = true;
+        }
+
+        return painted;
+    }
+
+    private bool TryGetCellPaintBrush(DataGrid dataGrid, DataRowView rowView, string columnName, out Brush brush)
+    {
+        var rowIndex = GetVisualRowIndex(dataGrid, rowView);
+        if (rowIndex >= 0 && _paintedCellBrushes.TryGetValue(new PaintedCellKey(rowIndex, columnName), out brush!))
+        {
+            return true;
+        }
+
+        brush = Brushes.Transparent;
+        return false;
+    }
+
+    private int GetVisualRowIndex(DataGrid dataGrid, DataRowView rowView)
+    {
+        var rowIndex = rowView.Row.Table.Rows.IndexOf(rowView.Row);
+        if (rowIndex < 0)
+        {
+            return -1;
+        }
+
+        return dataGrid == CsvDataGrid ? rowIndex + GetFrozenRowCount() : rowIndex;
+    }
+
+    private void BeginColumnWidthRestore()
+    {
+        var widths = CaptureColumnWidths();
+        if (widths.Count > 0)
+        {
+            _pendingColumnWidths = widths;
+        }
+    }
+
+    private IReadOnlyList<double> CaptureColumnWidths()
+    {
+        var source = CsvDataGrid.Columns.Count > 0 ? CsvDataGrid : FrozenRowsDataGrid;
+        var widths = new List<double>(source.Columns.Count);
+
+        foreach (var column in source.Columns)
+        {
+            var width = column.ActualWidth;
+            if (double.IsNaN(width) || width <= 0)
+            {
+                width = column.Width.DisplayValue;
+            }
+
+            widths.Add(!double.IsNaN(width) && width > 0 ? width : 0);
+        }
+
+        return widths;
+    }
+
+    private void RestorePendingColumnWidths()
+    {
+        if (_pendingColumnWidths is not { Count: > 0 } widths)
+        {
+            return;
+        }
+
+        try
+        {
+            _syncingColumnWidths = true;
+            ApplyColumnWidths(CsvDataGrid, widths);
+            ApplyColumnWidths(FrozenRowsDataGrid, widths);
+        }
+        finally
+        {
+            _syncingColumnWidths = false;
+        }
+    }
+
+    private void QueuePendingColumnWidthRestore()
+    {
+        if (_pendingColumnWidths == null || _columnWidthRestoreQueued)
+        {
+            return;
+        }
+
+        _columnWidthRestoreQueued = true;
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            RestorePendingColumnWidths();
+            _pendingColumnWidths = null;
+            _columnWidthRestoreQueued = false;
+            QueueColumnLayoutSync();
+        }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+    }
+
+    private static void ApplyColumnWidths(DataGrid dataGrid, IReadOnlyList<double> widths)
+    {
+        var count = Math.Min(widths.Count, dataGrid.Columns.Count);
+        for (var i = 0; i < count; i++)
+        {
+            if (widths[i] > 0)
+            {
+                dataGrid.Columns[i].Width = new DataGridLength(widths[i]);
+            }
+        }
+    }
+
+    private void RegisterColumnWidthSync()
+    {
+        var descriptor = DependencyPropertyDescriptor.FromProperty(DataGridColumn.ActualWidthProperty, typeof(DataGridColumn));
+        foreach (var column in _mainWidthObservedColumns)
+        {
+            descriptor.RemoveValueChanged(column, MainColumnWidthChanged);
+        }
+
+        foreach (var column in _frozenWidthObservedColumns)
+        {
+            descriptor.RemoveValueChanged(column, FrozenColumnWidthChanged);
+        }
+
+        _mainWidthObservedColumns.Clear();
+        _frozenWidthObservedColumns.Clear();
+
         foreach (var column in CsvDataGrid.Columns)
         {
             descriptor.AddValueChanged(column, MainColumnWidthChanged);
-            _widthObservedColumns.Add(column);
+            _mainWidthObservedColumns.Add(column);
+        }
+
+        foreach (var column in FrozenRowsDataGrid.Columns)
+        {
+            descriptor.AddValueChanged(column, FrozenColumnWidthChanged);
+            _frozenWidthObservedColumns.Add(column);
         }
     }
 
@@ -263,20 +605,23 @@ public partial class CsvDocumentGrid : UserControl
             return;
         }
 
-        QueueColumnLayoutSync();
+        SyncColumnLayouts(CsvDataGrid, FrozenRowsDataGrid);
     }
 
-    private void QueueColumnLayoutSync()
+    private void FrozenColumnWidthChanged(object? sender, EventArgs e)
     {
-        if (_columnLayoutSyncQueued)
+        if (_syncingColumnWidths)
         {
             return;
         }
 
-        _columnLayoutSyncQueued = true;
+        SyncColumnLayouts(FrozenRowsDataGrid, CsvDataGrid);
+    }
+
+    private void QueueColumnLayoutSync()
+    {
         Dispatcher.BeginInvoke(() =>
         {
-            _columnLayoutSyncQueued = false;
             SyncColumnLayouts(CsvDataGrid, FrozenRowsDataGrid);
         }, System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
@@ -285,6 +630,7 @@ public partial class CsvDocumentGrid : UserControl
     {
         var style = new Style(typeof(TextBlock));
         style.Setters.Add(new Setter(TextBlock.PaddingProperty, new Thickness(2, 0, 2, 0)));
+        style.Setters.Add(new Setter(TextBlock.ForegroundProperty, new DynamicResourceExtension("TextPrimaryBrush")));
 
         if (FindResource("SearchHighlightBrushConverter") is IMultiValueConverter converter)
         {
@@ -304,6 +650,69 @@ public partial class CsvDocumentGrid : UserControl
         }
 
         return style;
+    }
+
+    private Style CreateCellPaintStyle(string columnName)
+    {
+        var style = new Style(typeof(DataGridCell));
+        var paintBinding = CreateCellPaintBinding(columnName, CellPaintStateConverter.Instance);
+        var backgroundBinding = CreateCellPaintBinding(columnName, _cellPaintBrushConverter);
+
+        style.Setters.Add(new Setter(IsCellPaintedProperty, paintBinding));
+        style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, backgroundBinding));
+        style.Setters.Add(new Setter(DataGridCell.ForegroundProperty, new DynamicResourceExtension("TextPrimaryBrush")));
+        style.Setters.Add(new Setter(DataGridCell.BorderThicknessProperty, new Thickness(0)));
+
+        var paintedTrigger = new Trigger
+        {
+            Property = IsCellPaintedProperty,
+            Value = true
+        };
+        paintedTrigger.Setters.Add(new Setter(DataGridCell.ForegroundProperty, Brushes.Black));
+        style.Triggers.Add(paintedTrigger);
+
+        var selectedTrigger = new Trigger
+        {
+            Property = DataGridCell.IsSelectedProperty,
+            Value = true
+        };
+        selectedTrigger.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(37, 99, 235))));
+        selectedTrigger.Setters.Add(new Setter(DataGridCell.ForegroundProperty, Brushes.White));
+        style.Triggers.Add(selectedTrigger);
+
+        return style;
+    }
+
+    private MultiBinding CreateCellPaintBinding(string columnName, IMultiValueConverter converter)
+    {
+        var binding = new MultiBinding
+        {
+            Converter = converter,
+            ConverterParameter = columnName
+        };
+
+        AddCellPaintBindings(binding);
+        return binding;
+    }
+
+    private void AddCellPaintBindings(MultiBinding binding)
+    {
+        binding.Bindings.Add(new Binding());
+        binding.Bindings.Add(new Binding(nameof(CellPaintVersion))
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+            Mode = BindingMode.OneWay
+        });
+        binding.Bindings.Add(new Binding
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
+            Mode = BindingMode.OneWay
+        });
+        binding.Bindings.Add(new Binding
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+            Mode = BindingMode.OneWay
+        });
     }
 
     private void SyncHorizontalScroll(DataGrid target, double offset, double change)
@@ -355,6 +764,44 @@ public partial class CsvDocumentGrid : UserControl
         }
     }
 
+    private static DataGridColumn? FindColumn(DataGrid dataGrid, string columnName)
+    {
+        return dataGrid.Columns.FirstOrDefault(column => GetColumnName(column) == columnName);
+    }
+
+    private static string? GetColumnName(DataGridColumn column)
+    {
+        if (!string.IsNullOrEmpty(column.SortMemberPath))
+        {
+            return column.SortMemberPath;
+        }
+
+        return column is DataGridBoundColumn { Binding: Binding binding } ? binding.Path?.Path : null;
+    }
+
+    private static Brush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var current = child;
+        while (current != null)
+        {
+            if (current is T typedParent)
+            {
+                return typedParent;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
     private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -373,5 +820,55 @@ public partial class CsvDocumentGrid : UserControl
         }
 
         return null;
+    }
+
+    private readonly record struct PaintedCellKey(int RowIndex, string ColumnName);
+
+    private sealed class CellPaintBrushConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length < 4
+                || values[0] is not DataRowView rowView
+                || values[2] is not DataGrid dataGrid
+                || values[3] is not CsvDocumentGrid documentGrid
+                || parameter is not string columnName)
+            {
+                return Brushes.Transparent;
+            }
+
+            return documentGrid.TryGetCellPaintBrush(dataGrid, rowView, columnName, out var brush)
+                ? brush
+                : Brushes.Transparent;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed class CellPaintStateConverter : IMultiValueConverter
+    {
+        public static CellPaintStateConverter Instance { get; } = new();
+
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length < 4
+                || values[0] is not DataRowView rowView
+                || values[2] is not DataGrid dataGrid
+                || values[3] is not CsvDocumentGrid documentGrid
+                || parameter is not string columnName)
+            {
+                return false;
+            }
+
+            return documentGrid.TryGetCellPaintBrush(dataGrid, rowView, columnName, out _);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

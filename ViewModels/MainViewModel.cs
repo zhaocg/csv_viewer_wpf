@@ -35,7 +35,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _hideColumnHeaders;
     private bool _isSvnMode;
     private string _statusText = "请打开或拖拽 CSV 文件。";
-    private string _folderSearchText = string.Empty;
+    private string _folderTreeMessage = string.Empty;
     private string _lastSvnUrl = string.Empty;
     private string _svnExcelPathTemplate = DefaultSvnExcelPathTemplate;
     private string _selectedSvnBranch = DefaultSvnBranches[0];
@@ -43,6 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string? _selectedSvnBranchPreset;
     private string _selectedEncoding = "Auto";
     private string _selectedDelimiter = "Comma (,)";
+    private string _selectedTheme = ThemeService.LightTheme;
 
     public MainViewModel()
     {
@@ -68,6 +69,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _lastSvnUrl = GetCurrentSvnRootUrl();
         _selectedEncoding = NormalizeOption(_appState.SelectedEncoding, EncodingOptions);
         _selectedDelimiter = NormalizeOption(_appState.SelectedDelimiter, DelimiterOptions, "Comma (,)");
+        _selectedTheme = NormalizeOption(_appState.SelectedTheme, ThemeOptions, ThemeService.LightTheme);
+        ThemeService.Apply(_selectedTheme);
         LoadRecentFiles();
 
         OpenFileCommand = new RelayCommand(async _ => await OpenFileAsync(), _ => !IsBusy);
@@ -95,8 +98,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string[] EncodingOptions { get; } = ["Auto", "UTF-8", "GBK"];
     public string[] DelimiterOptions { get; } = ["Auto", "Comma (,)", "Semicolon (;)", "Tab", "Pipe (|)"];
+    public string[] ThemeOptions { get; } = [ThemeService.LightTheme, ThemeService.DarkTheme];
     public ObservableCollection<CsvDocumentViewModel> Documents { get; } = [];
-    public ObservableCollection<FileTreeNode> FolderSearchResults { get; } = [];
     public ObservableCollection<FileTreeNode> RecentFiles { get; } = [];
     public ObservableCollection<string> SvnBranches { get; } = [];
 
@@ -155,20 +158,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public string FolderSearchText
+    public string SelectedTheme
     {
-        get => _folderSearchText;
+        get => _selectedTheme;
         set
         {
-            if (SetProperty(ref _folderSearchText, value))
+            if (SetProperty(ref _selectedTheme, value))
             {
-                OnPropertyChanged(nameof(HasFolderSearchText));
-                UpdateFolderSearchResults();
+                _appState.SelectedTheme = value;
+                ThemeService.Apply(value);
+                SaveAppState();
             }
         }
     }
-
-    public bool HasFolderSearchText => !string.IsNullOrWhiteSpace(FolderSearchText);
 
     public string LastSvnUrl
     {
@@ -300,6 +302,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _folderTreeRoot;
         private set => SetProperty(ref _folderTreeRoot, value);
     }
+
+    public string FolderTreeMessage
+    {
+        get => _folderTreeMessage;
+        private set
+        {
+            if (SetProperty(ref _folderTreeMessage, value))
+            {
+                OnPropertyChanged(nameof(HasFolderTreeMessage));
+            }
+        }
+    }
+
+    public bool HasFolderTreeMessage => !string.IsNullOrWhiteSpace(FolderTreeMessage);
 
     public FileTreeNode? SelectedTreeNode
     {
@@ -514,9 +530,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         if (string.IsNullOrWhiteSpace(_appState.LastFolderPath) || !Directory.Exists(_appState.LastFolderPath))
         {
-            FolderTreeRoot = null;
-            _folderSearchIndex = [];
-            FolderSearchResults.Clear();
+            ClearFolderTree(string.Empty);
             StatusText = "请打开或拖拽 CSV 文件。";
             return;
         }
@@ -543,8 +557,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var relativeFilePaths = await _svnFolderService.ListFilesAsync(LastSvnUrl);
             var svnFolderContext = BuildSvnFolderContext(LastSvnUrl, relativeFilePaths);
             FolderTreeRoot = svnFolderContext.Root;
+            FolderTreeMessage = string.Empty;
             _folderSearchIndex = svnFolderContext.SearchFiles;
-            UpdateFolderSearchResults();
 
             if (reloadOpenedDocuments)
             {
@@ -555,8 +569,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            var message = $"SVN 分支 {SelectedSvnBranch} 加载失败。{Environment.NewLine}{ex.Message}";
+            ClearFolderTree(message);
+            MarkRemoteDocumentsUnavailable(message);
             StatusText = "加载 SVN 分支失败。";
-            MessageBox.Show(ex.Message, "加载 SVN 分支失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -577,14 +593,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             catch
             {
-                document.MarkReloadFailed($"当前分支 {SelectedSvnBranch} 中不存在或无法读取该表，仍显示上一次加载内容。");
+                document.MarkUnavailable($"当前分支 {SelectedSvnBranch} 中不存在或无法读取该表。{Environment.NewLine}已清空旧内容，避免误读。{Environment.NewLine}{document.RemoteRelativePath}");
                 failedDocuments.Add(document.FileName);
             }
         }
 
         if (failedDocuments.Count > 0)
         {
-            MessageBox.Show($"以下 SVN 表格在当前分支中更新失败: {string.Join(", ", failedDocuments)}", "切换分支", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StatusText = $"当前分支中有 {failedDocuments.Count} 个 SVN 表格不可用，已清空旧内容。";
         }
     }
 
@@ -808,27 +824,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         var folderContext = await Task.Run(() => new FolderContext(BuildFolderTree(rootPath), BuildSearchIndex(rootPath)));
         FolderTreeRoot = folderContext.Root;
+        FolderTreeMessage = string.Empty;
         _folderSearchIndex = folderContext.SearchFiles;
-        UpdateFolderSearchResults();
     }
 
-    private void UpdateFolderSearchResults()
+    private void ClearFolderTree(string message)
     {
-        FolderSearchResults.Clear();
-        var keyword = FolderSearchText.Trim();
-        if (string.IsNullOrEmpty(keyword))
-        {
-            return;
-        }
+        FolderTreeRoot = null;
+        FolderTreeMessage = message;
+        _folderSearchIndex = [];
+    }
 
-        foreach (var node in _folderSearchIndex
-            .Where(node => IsFileSearchMatch(node, keyword))
-            .OrderBy(node => GetSearchRank(node, keyword))
-            .ThenBy(node => node.Name)
-            .ThenBy(node => node.FullPath)
-            .Take(MaxSearchResults))
+    private void MarkRemoteDocumentsUnavailable(string message)
+    {
+        foreach (var document in Documents.Where(document => document.IsRemote).ToList())
         {
-            FolderSearchResults.Add(node);
+            document.MarkUnavailable(message);
         }
     }
 
