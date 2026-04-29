@@ -71,10 +71,10 @@ public sealed class CsvFileService
             return table;
         }
 
-        var headers = hasHeader ? rows[0] : Enumerable.Range(1, maxColumns).Select(index => $"Column {index}").ToArray();
+        var headers = hasHeader ? rows[0] : Enumerable.Range(0, maxColumns).Select(GetExcelColumnName).ToArray();
         for (var i = 0; i < maxColumns; i++)
         {
-            var header = i < headers.Length && !string.IsNullOrWhiteSpace(headers[i]) ? headers[i].Trim() : $"Column {i + 1}";
+            var header = i < headers.Length && !string.IsNullOrWhiteSpace(headers[i]) ? headers[i].Trim() : GetExcelColumnName(i);
             table.Columns.Add(MakeUniqueColumnName(table, header), typeof(string));
         }
 
@@ -102,6 +102,21 @@ public sealed class CsvFileService
         }
 
         return row.Select(value => value.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == row.Length;
+    }
+
+    private static string GetExcelColumnName(int zeroBasedIndex)
+    {
+        var dividend = zeroBasedIndex + 1;
+        var columnName = string.Empty;
+
+        while (dividend > 0)
+        {
+            var modulo = (dividend - 1) % 26;
+            columnName = (char)('A' + modulo) + columnName;
+            dividend = (dividend - modulo) / 26;
+        }
+
+        return columnName;
     }
 
     private static string MakeUniqueColumnName(DataTable table, string baseName)

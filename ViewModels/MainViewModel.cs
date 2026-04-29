@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -19,31 +18,38 @@ namespace CsvViewer.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
+    private const int MaxRecentFiles = 12;
+    private const int MaxSearchResults = 100;
+
+    private readonly AppStateService _appStateService = new();
+    private readonly AppState _appState;
     private readonly CsvFileService _csvFileService = new();
-    private DataTable? _sourceTable;
-    private DataView? _tableView;
-    private string _statusText = "请打开或拖拽 CSV 文件。";
-    private string _searchText = string.Empty;
-    private string _fileName = "未打开文件";
-    private string _fileSizeText = "-";
-    private string _rowCountText = "0";
-    private string _columnCountText = "0";
-    private string _encodingName = "-";
-    private string _delimiterName = "-";
+    private List<FileTreeNode> _folderSearchIndex = [];
     private ObservableCollection<FileTreeNode>? _folderTreeRoot;
     private FileTreeNode? _selectedTreeNode;
+    private CsvDocumentViewModel? _selectedDocument;
     private bool _isBusy;
-    private string? _currentFilePath;
+    private bool _hideColumnHeaders;
+    private string _statusText = "请打开或拖拽 CSV 文件。";
+    private string _folderSearchText = string.Empty;
     private string _selectedEncoding = "Auto";
     private string _selectedDelimiter = "Auto";
 
     public MainViewModel()
     {
+        _appState = _appStateService.Load();
+        _appState.RecentFilePaths ??= [];
+        _hideColumnHeaders = _appState.HideColumnHeaders;
+        _selectedEncoding = NormalizeOption(_appState.SelectedEncoding, EncodingOptions);
+        _selectedDelimiter = NormalizeOption(_appState.SelectedDelimiter, DelimiterOptions);
+        LoadRecentFiles();
+
         OpenFileCommand = new RelayCommand(async _ => await OpenFileAsync(), _ => !IsBusy);
         OpenFolderCommand = new RelayCommand(async _ => await OpenFolderAsync(), _ => !IsBusy);
-        ReloadCommand = new RelayCommand(async _ => await ReloadAsync(), _ => !IsBusy && !string.IsNullOrEmpty(_currentFilePath));
-        ApplySearchCommand = new RelayCommand(async _ => await ApplySearchAsync(), _ => !IsBusy && _sourceTable != null);
-        ClearSearchCommand = new RelayCommand(_ => ClearSearch(), _ => !IsBusy && !string.IsNullOrEmpty(SearchText));
+        ReloadCommand = new RelayCommand(async _ => await ReloadAsync(), _ => !IsBusy && SelectedDocument != null);
+        ApplySearchCommand = new RelayCommand(async _ => await ApplySearchAsync(), _ => !IsBusy && SelectedDocument != null);
+        ClearSearchCommand = new RelayCommand(_ => ClearSearch(), _ => !IsBusy && !string.IsNullOrEmpty(SelectedDocument?.SearchText));
+        CloseDocumentCommand = new RelayCommand(CloseDocument, _ => !IsBusy);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -53,75 +59,98 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ReloadCommand { get; }
     public ICommand ApplySearchCommand { get; }
     public ICommand ClearSearchCommand { get; }
+    public ICommand CloseDocumentCommand { get; }
 
     public string[] EncodingOptions { get; } = ["Auto", "UTF-8", "GBK"];
     public string[] DelimiterOptions { get; } = ["Auto", "Comma (,)", "Semicolon (;)", "Tab", "Pipe (|)"];
+    public ObservableCollection<CsvDocumentViewModel> Documents { get; } = [];
+    public ObservableCollection<FileTreeNode> FolderSearchResults { get; } = [];
+    public ObservableCollection<FileTreeNode> RecentFiles { get; } = [];
 
-    public DataView? TableView
+    public CsvDocumentViewModel? SelectedDocument
     {
-        get => _tableView;
-        private set => SetProperty(ref _tableView, value);
+        get => _selectedDocument;
+        set
+        {
+            if (_selectedDocument != null)
+            {
+                _selectedDocument.PropertyChanged -= SelectedDocument_PropertyChanged;
+            }
+
+            if (SetProperty(ref _selectedDocument, value))
+            {
+                if (_selectedDocument != null)
+                {
+                    _selectedDocument.PropertyChanged += SelectedDocument_PropertyChanged;
+                }
+
+                RaiseSelectedDocumentProperties();
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
     }
 
-    public string SearchText
+    public string StatusText
     {
-        get => _searchText;
-        set => SetProperty(ref _searchText, value);
+        get => IsBusy ? _statusText : SelectedDocument?.StatusText ?? _statusText;
+        private set => SetProperty(ref _statusText, value);
     }
 
     public string SelectedEncoding
     {
         get => _selectedEncoding;
-        set => SetProperty(ref _selectedEncoding, value);
+        set
+        {
+            if (SetProperty(ref _selectedEncoding, value))
+            {
+                _appState.SelectedEncoding = value;
+                SaveAppState();
+            }
+        }
     }
 
     public string SelectedDelimiter
     {
         get => _selectedDelimiter;
-        set => SetProperty(ref _selectedDelimiter, value);
+        set
+        {
+            if (SetProperty(ref _selectedDelimiter, value))
+            {
+                _appState.SelectedDelimiter = value;
+                SaveAppState();
+            }
+        }
     }
 
-    public string StatusText
+    public string FolderSearchText
     {
-        get => _statusText;
-        private set => SetProperty(ref _statusText, value);
+        get => _folderSearchText;
+        set
+        {
+            if (SetProperty(ref _folderSearchText, value))
+            {
+                OnPropertyChanged(nameof(HasFolderSearchText));
+                UpdateFolderSearchResults();
+            }
+        }
     }
 
-    public string FileName
+    public bool HasFolderSearchText => !string.IsNullOrWhiteSpace(FolderSearchText);
+
+    public bool HideColumnHeaders
     {
-        get => _fileName;
-        private set => SetProperty(ref _fileName, value);
+        get => _hideColumnHeaders;
+        set
+        {
+            if (SetProperty(ref _hideColumnHeaders, value))
+            {
+                _appState.HideColumnHeaders = value;
+                SaveAppState();
+            }
+        }
     }
 
-    public string FileSizeText
-    {
-        get => _fileSizeText;
-        private set => SetProperty(ref _fileSizeText, value);
-    }
-
-    public string RowCountText
-    {
-        get => _rowCountText;
-        private set => SetProperty(ref _rowCountText, value);
-    }
-
-    public string ColumnCountText
-    {
-        get => _columnCountText;
-        private set => SetProperty(ref _columnCountText, value);
-    }
-
-    public string EncodingName
-    {
-        get => _encodingName;
-        private set => SetProperty(ref _encodingName, value);
-    }
-
-    public string DelimiterName
-    {
-        get => _delimiterName;
-        private set => SetProperty(ref _delimiterName, value);
-    }
+    public bool HasFrozenCells => (SelectedDocument?.FrozenRowCount ?? 0) > 0 || (SelectedDocument?.FrozenColumnCount ?? 0) > 0;
 
     public bool IsBusy
     {
@@ -130,6 +159,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(StatusText));
                 CommandManager.InvalidateRequerySuggested();
             }
         }
@@ -161,6 +191,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        var openedDocument = Documents.FirstOrDefault(document => string.Equals(document.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+        if (openedDocument != null)
+        {
+            SelectedDocument = openedDocument;
+            AddRecentFile(filePath);
+            return;
+        }
+
         IsBusy = true;
         StatusText = "正在加载文件...";
 
@@ -169,7 +207,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var forcedEncoding = GetForcedEncoding();
             var forcedDelimiter = GetForcedDelimiter();
             var result = await Task.Run(() => _csvFileService.Load(filePath, forcedEncoding, forcedDelimiter));
-            ApplyLoadedResult(result);
+            var document = new CsvDocumentViewModel(result, _csvFileService, forcedEncoding, forcedDelimiter);
+            Documents.Add(document);
+            SelectedDocument = document;
+            SaveLastFolderPath(Path.GetDirectoryName(filePath));
+            AddRecentFile(filePath);
         }
         catch (Exception ex)
         {
@@ -182,69 +224,106 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task LoadFilesAsync(IEnumerable<string> filePaths)
+    {
+        foreach (var filePath in filePaths)
+        {
+            await LoadFileAsync(filePath);
+        }
+    }
+
+    public async Task OpenFileNodeAsync(FileTreeNode? node)
+    {
+        if (node is not { IsDirectory: false })
+        {
+            return;
+        }
+
+        await LoadFileAsync(node.FullPath);
+    }
+
+    public void SetSelectedFrozenRowCount(int count)
+    {
+        SelectedDocument?.SetFrozenRowCount(count);
+    }
+
+    public void SetSelectedFrozenColumnCount(int count)
+    {
+        if (SelectedDocument != null)
+        {
+            SelectedDocument.FrozenColumnCount = count;
+        }
+    }
+
+    public async Task InitializeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_appState.LastFolderPath) || !Directory.Exists(_appState.LastFolderPath))
+        {
+            return;
+        }
+
+        try
+        {
+            await LoadFolderContextAsync(_appState.LastFolderPath);
+            StatusText = $"已恢复上次文件夹: {_appState.LastFolderPath}";
+        }
+        catch
+        {
+            StatusText = "请打开或拖拽 CSV 文件。";
+        }
+    }
+
     private async Task OpenFileAsync()
     {
         var dialog = new OpenFileDialog
         {
             Filter = "CSV 文件 (*.csv)|*.csv|文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
-            Title = "打开 CSV 文件"
+            Title = "打开 CSV 文件",
+            Multiselect = true
         };
 
         if (dialog.ShowDialog() == true)
         {
-            await LoadFileAsync(dialog.FileName);
+            await LoadFilesAsync(dialog.FileNames);
         }
     }
 
     private async Task ReloadAsync()
     {
-        if (!string.IsNullOrEmpty(_currentFilePath))
-        {
-            await LoadFileAsync(_currentFilePath);
-        }
-    }
-
-    private void ApplyLoadedResult(CsvLoadResult result)
-    {
-        _currentFilePath = result.FilePath;
-        _sourceTable = result.Table;
-        SearchText = string.Empty;
-        TableView = result.Table.DefaultView;
-
-        FileName = Path.GetFileName(result.FilePath);
-        FileSizeText = FormatFileSize(result.FileSize);
-        RowCountText = result.Table.Rows.Count.ToString("N0");
-        ColumnCountText = result.Table.Columns.Count.ToString("N0");
-        EncodingName = result.Encoding.WebName.ToUpperInvariant();
-        DelimiterName = FormatDelimiter(result.Delimiter);
-        StatusText = $"加载完成。{(result.HasHeader ? "已识别表头。" : "未识别表头，已生成默认列名。")}";
-    }
-
-    private async Task ApplySearchAsync()
-    {
-        if (_sourceTable == null)
+        if (SelectedDocument == null)
         {
             return;
         }
 
-        var keyword = SearchText.Trim();
-        if (string.IsNullOrEmpty(keyword))
+        IsBusy = true;
+        StatusText = "正在重新加载文件...";
+        try
         {
-            TableView = _sourceTable.DefaultView;
-            StatusText = "已清除搜索。";
-            RowCountText = _sourceTable.Rows.Count.ToString("N0");
+            await SelectedDocument.ReloadAsync(GetForcedEncoding(), GetForcedDelimiter());
+        }
+        catch (Exception ex)
+        {
+            StatusText = "重新加载失败。";
+            MessageBox.Show(ex.Message, "重新加载失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ApplySearchAsync()
+    {
+        if (SelectedDocument == null)
+        {
             return;
         }
 
         IsBusy = true;
         StatusText = "正在搜索...";
-
         try
         {
-            var filtered = await Task.Run(() => FilterTable(_sourceTable, keyword));
-            TableView = filtered.DefaultView;
-            RowCountText = filtered.Rows.Count.ToString("N0");
-            StatusText = $"搜索完成，匹配 {filtered.Rows.Count:N0} 行。";
+            await SelectedDocument.ApplySearchAsync();
         }
         finally
         {
@@ -254,28 +333,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ClearSearch()
     {
-        SearchText = string.Empty;
-        if (_sourceTable != null)
-        {
-            TableView = _sourceTable.DefaultView;
-            RowCountText = _sourceTable.Rows.Count.ToString("N0");
-        }
-
-        StatusText = "已清除搜索。";
+        SelectedDocument?.ClearSearch();
     }
 
-    private static DataTable FilterTable(DataTable table, string keyword)
+    private void CloseDocument(object? parameter)
     {
-        var filtered = table.Clone();
-        foreach (DataRow row in table.Rows)
+        if (parameter is not CsvDocumentViewModel document)
         {
-            if (row.ItemArray.Any(value => Convert.ToString(value)?.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
-            {
-                filtered.ImportRow(row);
-            }
+            return;
         }
 
-        return filtered;
+        var index = Documents.IndexOf(document);
+        Documents.Remove(document);
+
+        if (SelectedDocument == document)
+        {
+            SelectedDocument = Documents.Count == 0 ? null : Documents[Math.Clamp(index, 0, Documents.Count - 1)];
+        }
+
+        if (Documents.Count == 0)
+        {
+            StatusText = "请打开或拖拽 CSV 文件。";
+        }
     }
 
     private Encoding? GetForcedEncoding()
@@ -308,36 +387,93 @@ public sealed class MainViewModel : INotifyPropertyChanged
             || extension.Equals(".txt", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string FormatFileSize(long bytes)
+    private static string NormalizeOption(string? value, string[] options)
     {
-        string[] units = ["B", "KB", "MB", "GB"];
-        double size = bytes;
-        var unit = 0;
+        return !string.IsNullOrWhiteSpace(value) && options.Contains(value) ? value : options[0];
+    }
 
-        while (size >= 1024 && unit < units.Length - 1)
+    private async Task LoadFolderContextAsync(string rootPath)
+    {
+        var folderContext = await Task.Run(() => new FolderContext(BuildFolderTree(rootPath), BuildSearchIndex(rootPath)));
+        FolderTreeRoot = folderContext.Root;
+        _folderSearchIndex = folderContext.SearchFiles;
+        UpdateFolderSearchResults();
+    }
+
+    private void UpdateFolderSearchResults()
+    {
+        FolderSearchResults.Clear();
+        var keyword = FolderSearchText.Trim();
+        if (string.IsNullOrEmpty(keyword))
         {
-            size /= 1024;
-            unit++;
+            return;
         }
 
-        return $"{size:0.##} {units[unit]}";
-    }
-
-    private static string FormatDelimiter(string delimiter)
-    {
-        return delimiter switch
+        foreach (var node in _folderSearchIndex
+            .Where(node => IsFileSearchMatch(node, keyword))
+            .OrderBy(node => GetSearchRank(node, keyword))
+            .ThenBy(node => node.Name)
+            .ThenBy(node => node.FullPath)
+            .Take(MaxSearchResults))
         {
-            "\t" => "Tab",
-            "," => "Comma",
-            ";" => "Semicolon",
-            "|" => "Pipe",
-            _ => delimiter
-        };
+            FolderSearchResults.Add(node);
+        }
     }
 
-    /// <summary>
-    /// 展开树节点，按需加载该目录下的子文件夹和 CSV 文件。
-    /// </summary>
+    private static bool IsFileSearchMatch(FileTreeNode node, string keyword)
+    {
+        return IsFuzzyMatch(node.Name, keyword) || IsFuzzyMatch(node.FullPath, keyword);
+    }
+
+    private static int GetSearchRank(FileTreeNode node, string keyword)
+    {
+        if (node.Name.Equals(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (node.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        if (node.FullPath.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    private static bool IsFuzzyMatch(string text, string keyword)
+    {
+        if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var textIndex = 0;
+        foreach (var keywordChar in keyword.Where(value => !char.IsWhiteSpace(value)))
+        {
+            var found = false;
+            while (textIndex < text.Length)
+            {
+                if (char.ToUpperInvariant(text[textIndex++]) == char.ToUpperInvariant(keywordChar))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public void ExpandTreeNode(FileTreeNode? node)
     {
         if (node is not { IsDirectory: true, HasDummyChild: true })
@@ -350,7 +486,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             node.Children.Clear();
             node.HasDummyChild = false;
 
-            // 添加子文件夹
             foreach (var dirPath in Directory.GetDirectories(node.FullPath).OrderBy(Path.GetFileName))
             {
                 var dirNode = new FileTreeNode
@@ -360,12 +495,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     IsDirectory = true,
                     HasDummyChild = true
                 };
-                dirNode.Children.Add(new FileTreeNode()); // 占位节点，支持懒加载
+                dirNode.Children.Add(new FileTreeNode());
                 node.Children.Add(dirNode);
             }
 
-            // 只添加 CSV 文件
-            foreach (var filePath in Directory.GetFiles(node.FullPath, "*.csv").OrderBy(Path.GetFileName))
+            foreach (var filePath in EnumerateSupportedFilesInDirectory(node.FullPath).OrderBy(Path.GetFileName))
             {
                 node.Children.Add(new FileTreeNode
                 {
@@ -377,13 +511,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (UnauthorizedAccessException)
         {
-            // 跳过无权限的目录
         }
     }
 
-    /// <summary>
-    /// 打开文件夹，构建文件夹树。
-    /// </summary>
     private async Task OpenFolderAsync()
     {
         var dialog = new OpenFolderDialog
@@ -402,7 +532,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            FolderTreeRoot = await Task.Run(() => BuildFolderTree(rootPath));
+            await LoadFolderContextAsync(rootPath);
+            SaveLastFolderPath(rootPath);
             StatusText = $"文件夹已加载: {rootPath}";
         }
         catch (Exception ex)
@@ -416,9 +547,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>
-    /// 构建根节点下的文件夹树（懒加载，仅展开第一层）。
-    /// </summary>
     private ObservableCollection<FileTreeNode> BuildFolderTree(string rootPath)
     {
         var rootNode = new FileTreeNode
@@ -428,28 +556,172 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsDirectory = true,
             HasDummyChild = true
         };
-        rootNode.Children.Add(new FileTreeNode()); // 占位节点
+        rootNode.Children.Add(new FileTreeNode());
 
         return [rootNode];
     }
 
-    /// <summary>
-    /// 当用户在树中选中节点时触发：如果是 CSV 文件则直接加载。
-    /// </summary>
+    private static List<FileTreeNode> BuildSearchIndex(string rootPath)
+    {
+        return EnumerateSupportedFilesRecursively(rootPath)
+            .Select(filePath => new FileTreeNode
+            {
+                Name = Path.GetFileName(filePath),
+                FullPath = filePath,
+                IsDirectory = false
+            })
+            .OrderBy(node => node.Name)
+            .ThenBy(node => node.FullPath)
+            .ToList();
+    }
+
+    private static IEnumerable<string> EnumerateSupportedFilesInDirectory(string directoryPath)
+    {
+        IEnumerable<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(directoryPath);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            yield break;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            yield break;
+        }
+        catch (IOException)
+        {
+            yield break;
+        }
+
+        foreach (var filePath in files.Where(IsSupportedFile))
+        {
+            yield return filePath;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSupportedFilesRecursively(string rootPath)
+    {
+        var pendingDirectories = new Stack<string>();
+        pendingDirectories.Push(rootPath);
+
+        while (pendingDirectories.Count > 0)
+        {
+            var directoryPath = pendingDirectories.Pop();
+            foreach (var filePath in EnumerateSupportedFilesInDirectory(directoryPath))
+            {
+                yield return filePath;
+            }
+
+            IEnumerable<string> childDirectories;
+            try
+            {
+                childDirectories = Directory.EnumerateDirectories(directoryPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            foreach (var childDirectory in childDirectories)
+            {
+                pendingDirectories.Push(childDirectory);
+            }
+        }
+    }
+
     private async void OnTreeNodeSelected(FileTreeNode? node)
     {
-        if (node is not { IsDirectory: false })
-        {
-            return;
-        }
-
-        if (string.Equals(node.FullPath, _currentFilePath, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        await LoadFileAsync(node.FullPath);
+        await OpenFileNodeAsync(node);
     }
+
+    private void SelectedDocument_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(HasFrozenCells));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void RaiseSelectedDocumentProperties()
+    {
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(HasFrozenCells));
+    }
+
+    private void LoadRecentFiles()
+    {
+        RefreshRecentFiles();
+        if (_appState.RecentFilePaths.RemoveAll(filePath => !File.Exists(filePath) || !IsSupportedFile(filePath)) > 0)
+        {
+            SaveAppState();
+        }
+    }
+
+    private void AddRecentFile(string filePath)
+    {
+        if (!File.Exists(filePath) || !IsSupportedFile(filePath))
+        {
+            return;
+        }
+
+        _appState.RecentFilePaths.RemoveAll(path => string.Equals(path, filePath, StringComparison.OrdinalIgnoreCase));
+        _appState.RecentFilePaths.Insert(0, filePath);
+
+        if (_appState.RecentFilePaths.Count > MaxRecentFiles)
+        {
+            _appState.RecentFilePaths.RemoveRange(MaxRecentFiles, _appState.RecentFilePaths.Count - MaxRecentFiles);
+        }
+
+        RefreshRecentFiles();
+        SaveAppState();
+    }
+
+    private void RefreshRecentFiles()
+    {
+        RecentFiles.Clear();
+        foreach (var filePath in _appState.RecentFilePaths.Where(filePath => File.Exists(filePath) && IsSupportedFile(filePath)).Take(MaxRecentFiles))
+        {
+            RecentFiles.Add(new FileTreeNode
+            {
+                Name = Path.GetFileName(filePath),
+                FullPath = filePath,
+                IsDirectory = false
+            });
+        }
+    }
+
+    private void SaveLastFolderPath(string? folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+        {
+            return;
+        }
+
+        _appState.LastFolderPath = folderPath;
+        SaveAppState();
+    }
+
+    private void SaveAppState()
+    {
+        try
+        {
+            _appStateService.Save(_appState);
+        }
+        catch
+        {
+        }
+    }
+
+    private sealed record FolderContext(ObservableCollection<FileTreeNode> Root, List<FileTreeNode> SearchFiles);
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -459,7 +731,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        OnPropertyChanged(propertyName);
         return true;
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

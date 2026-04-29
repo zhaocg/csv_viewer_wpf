@@ -1,0 +1,61 @@
+<Window x:Class="CsvViewer.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置"
+        Height="290"
+        Width="380"
+        MinHeight="290"
+        MinWidth="380"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="全局设置"
+                   FontWeight="SemiBold"
+                   FontSize="15" />
+
+        <TextBlock Grid.Row="1"
+                   Text="这些设置会应用到所有已打开和后续打开的表格。"
+                   Foreground="#667085"
+                   Margin="0,6,0,14"
+                   TextTrimming="CharacterEllipsis" />
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="编码" Margin="0,0,0,4" />
+            <ComboBox ItemsSource="{Binding EncodingOptions}"
+                      SelectedItem="{Binding SelectedEncoding, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      Width="180"
+                      HorizontalAlignment="Left"
+                      Margin="0,0,0,12" />
+
+            <TextBlock Text="分隔符" Margin="0,0,0,4" />
+            <ComboBox ItemsSource="{Binding DelimiterOptions}"
+                      SelectedItem="{Binding SelectedDelimiter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      Width="180"
+                      HorizontalAlignment="Left"
+                      Margin="0,0,0,16" />
+
+            <CheckBox Content="隐藏表头（列名行）"
+                      IsChecked="{Binding HideColumnHeaders, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock Text="设置会自动保存；编码和分隔符会在打开或重新加载文件时生效。"
+                       Foreground="#667085"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="22,8,0,0" />
+        </StackPanel>
+
+        <Button Grid.Row="3"
+                Content="关闭"
+                Width="78"
+                HorizontalAlignment="Right"
+                IsCancel="True"
+                Click="Close_Click" />
+    </Grid>
+</Window>
