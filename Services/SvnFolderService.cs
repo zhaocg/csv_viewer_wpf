@@ -13,20 +13,52 @@ namespace CsvViewer.Services;
 
 public sealed class SvnFolderService
 {
+    private static readonly string DefaultSessionCacheRoot = Path.Combine(
+        Path.GetTempPath(),
+        "CsvViewer",
+        "SvnFileCache");
+
     private readonly string _legacyCheckoutCacheRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "CsvViewer",
         "SvnFolders");
 
     private readonly string _sessionCacheRoot = Path.Combine(
-        Path.GetTempPath(),
-        "CsvViewer",
-        "SvnFileCache",
+        DefaultSessionCacheRoot,
         Environment.ProcessId.ToString());
 
     public SvnFolderService()
     {
         DeleteLegacyCheckoutCache();
+        CleanupOldSessionCaches(DefaultSessionCacheRoot, Environment.ProcessId.ToString());
+    }
+
+    public static void CleanupCurrentSessionCache()
+    {
+        CleanupSessionCache(DefaultSessionCacheRoot, Environment.ProcessId.ToString());
+    }
+
+    public static void CleanupOldSessionCaches(string cacheRoot, string currentSessionName)
+    {
+        if (!Directory.Exists(cacheRoot))
+        {
+            return;
+        }
+
+        foreach (var sessionDirectory in Directory.GetDirectories(cacheRoot))
+        {
+            if (string.Equals(Path.GetFileName(sessionDirectory), currentSessionName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            DeleteDirectoryQuietly(sessionDirectory);
+        }
+    }
+
+    public static void CleanupSessionCache(string cacheRoot, string sessionName)
+    {
+        DeleteDirectoryQuietly(Path.Combine(cacheRoot, sessionName));
     }
 
     public async Task<IReadOnlyList<string>> ListFilesAsync(string svnUrl)
@@ -267,11 +299,16 @@ public sealed class SvnFolderService
 
     private void DeleteLegacyCheckoutCache()
     {
+        DeleteDirectoryQuietly(_legacyCheckoutCacheRoot);
+    }
+
+    private static void DeleteDirectoryQuietly(string directoryPath)
+    {
         try
         {
-            if (Directory.Exists(_legacyCheckoutCacheRoot))
+            if (Directory.Exists(directoryPath))
             {
-                Directory.Delete(_legacyCheckoutCacheRoot, recursive: true);
+                Directory.Delete(directoryPath, recursive: true);
             }
         }
         catch

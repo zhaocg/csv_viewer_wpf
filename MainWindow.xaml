@@ -280,6 +280,41 @@
                             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2563EB" />
                             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
                         </TreeView.Resources>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                <EventSetter Event="MouseDoubleClick" Handler="FolderTreeViewItem_MouseDoubleClick" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="FolderTreeViewItem_PreviewMouseRightButtonDown" />
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu MinWidth="140">
+                                            <MenuItem Header="分支比较"
+                                                      ItemsSource="{Binding PlacementTarget.Tag.BranchCompareTargets, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                                <MenuItem.Style>
+                                                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource ContextSubmenuItemStyle}">
+                                                        <Setter Property="IsEnabled" Value="True" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsRemote, RelativeSource={RelativeSource AncestorType=ContextMenu}}" Value="False">
+                                                                <Setter Property="IsEnabled" Value="False" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsDirectory, RelativeSource={RelativeSource AncestorType=ContextMenu}}" Value="True">
+                                                                <Setter Property="IsEnabled" Value="False" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </MenuItem.Style>
+                                                <MenuItem.ItemContainerStyle>
+                                                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource ContextMenuItemStyle}">
+                                                        <Setter Property="Header" Value="{Binding}" />
+                                                        <EventSetter Event="Click" Handler="FolderTreeBranchCompare_Click" />
+                                                    </Style>
+                                                </MenuItem.ItemContainerStyle>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate DataType="{x:Type models:FileTreeNode}" ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal" Margin="2,2">
@@ -367,6 +402,19 @@
                                                       Style="{StaticResource ContextMenuItemStyle}"
                                                       Command="{Binding PlacementTarget.Tag.CloseDocumentsToRightCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Separator Style="{StaticResource ContextMenuSeparatorStyle}" />
+                                            <MenuItem Header="分支比较"
+                                                      ItemsSource="{Binding PlacementTarget.Tag.BranchCompareTargets, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      IsEnabled="{Binding PlacementTarget.DataContext.IsRemote, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Style="{StaticResource ContextSubmenuItemStyle}">
+                                                <MenuItem.ItemContainerStyle>
+                                                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource ContextMenuItemStyle}">
+                                                        <Setter Property="Header" Value="{Binding}" />
+                                                        <Setter Property="Command" Value="{Binding PlacementTarget.Tag.CompareBranchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                        <Setter Property="CommandParameter" Value="{Binding}" />
+                                                    </Style>
+                                                </MenuItem.ItemContainerStyle>
+                                            </MenuItem>
                                             <Separator Style="{StaticResource ContextMenuSeparatorStyle}" />
                                             <MenuItem Header="关闭全部"
                                                       Style="{StaticResource ContextMenuItemStyle}"

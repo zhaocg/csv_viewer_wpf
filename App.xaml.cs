@@ -1,4 +1,5 @@
 ﻿using CsvViewer.Models;
+using CsvViewer.Services;
 using System.Windows;
 
 namespace CsvViewer;
@@ -42,6 +43,12 @@ public partial class App : Application
             MessageBox.Show($"启动失败: {ex.Message}", "CSV Viewer", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();
         }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        SvnFolderService.CleanupCurrentSessionCache();
+        base.OnExit(e);
     }
 }
 

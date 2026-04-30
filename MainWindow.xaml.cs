@@ -3,6 +3,7 @@ using CsvViewer.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -230,15 +231,57 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void FolderTreeView_ItemSelected(object sender, RoutedEventArgs e)
+    private void FolderTreeView_ItemSelected(object sender, RoutedEventArgs e)
     {
-        if (e.OriginalSource is TreeViewItem item && item.DataContext is FileTreeNode node && !node.IsDirectory)
+        if (e.OriginalSource is TreeViewItem item && item.DataContext is FileTreeNode node && DataContext is MainViewModel viewModel)
         {
-            if (DataContext is MainViewModel viewModel)
-            {
-                await viewModel.OpenFileNodeAsync(node);
-            }
+            viewModel.SelectedTreeNode = node;
         }
+    }
+
+    private async void FolderTreeViewItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is TreeViewItem { DataContext: FileTreeNode { IsDirectory: false } node } && DataContext is MainViewModel viewModel)
+        {
+            await viewModel.OpenFileNodeAsync(node);
+            e.Handled = true;
+        }
+    }
+
+    private void FolderTreeViewItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is TreeViewItem item)
+        {
+            item.IsSelected = true;
+            e.Handled = false;
+        }
+    }
+
+    private async void FolderTreeBranchCompare_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: string targetBranch } menuItem || DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var contextMenu = GetOwningContextMenu(menuItem);
+        if (contextMenu?.PlacementTarget is not TreeViewItem { DataContext: FileTreeNode node })
+        {
+            return;
+        }
+
+        await viewModel.CompareFileNodeWithBranchAsync(node, targetBranch);
+    }
+
+    private static ContextMenu? GetOwningContextMenu(MenuItem menuItem)
+    {
+        ItemsControl? owner = ItemsControl.ItemsControlFromItemContainer(menuItem);
+        while (owner is MenuItem ownerMenuItem)
+        {
+            owner = ItemsControl.ItemsControlFromItemContainer(ownerMenuItem);
+        }
+
+        return owner as ContextMenu;
     }
 
     private async void FileListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

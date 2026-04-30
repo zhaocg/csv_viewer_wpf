@@ -27,6 +27,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly AppState _appState;
     private readonly CsvFileService _csvFileService = new();
     private readonly SvnFolderService _svnFolderService = new();
+    private readonly CsvCompareService _csvCompareService = new();
+    private readonly TortoiseSvnDiffLauncher _tortoiseSvnDiffLauncher = new();
     private List<FileTreeNode> _folderSearchIndex = [];
     private ObservableCollection<FileTreeNode>? _folderTreeRoot;
     private FileTreeNode? _selectedTreeNode;
@@ -83,6 +85,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CloseOtherDocumentsCommand = new RelayCommand(CloseOtherDocuments, parameter => !IsBusy && parameter is CsvDocumentViewModel && Documents.Count > 1);
         CloseDocumentsToRightCommand = new RelayCommand(CloseDocumentsToRight, parameter => !IsBusy && parameter is CsvDocumentViewModel document && Documents.IndexOf(document) >= 0 && Documents.IndexOf(document) < Documents.Count - 1);
         CloseAllDocumentsCommand = new RelayCommand(_ => CloseAllDocuments(), _ => !IsBusy && Documents.Count > 0);
+        CompareBranchCommand = new RelayCommand(async parameter => await CompareSelectedDocumentWithBranchAsync(parameter as string), parameter => !IsBusy && SelectedDocument?.IsRemote == true && parameter is string branch && !string.Equals(branch, SelectedSvnBranch, StringComparison.OrdinalIgnoreCase));
         AddSvnBranchCommand = new RelayCommand(_ => AddSvnBranch());
         RemoveSvnBranchCommand = new RelayCommand(_ => RemoveSelectedSvnBranch(), _ => SvnBranches.Count > 1 && !string.IsNullOrWhiteSpace(SelectedSvnBranchPreset));
     }
@@ -99,6 +102,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand CloseOtherDocumentsCommand { get; }
     public ICommand CloseDocumentsToRightCommand { get; }
     public ICommand CloseAllDocumentsCommand { get; }
+    public ICommand CompareBranchCommand { get; }
     public ICommand AddSvnBranchCommand { get; }
     public ICommand RemoveSvnBranchCommand { get; }
 
@@ -108,6 +112,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<CsvDocumentViewModel> Documents { get; } = [];
     public ObservableCollection<FileTreeNode> RecentFiles { get; } = [];
     public ObservableCollection<string> SvnBranches { get; } = [];
+
+    public IReadOnlyList<string> BranchCompareTargets => SvnBranches
+        .Where(branch => !string.Equals(branch, SelectedSvnBranch, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     public CsvDocumentViewModel? SelectedDocument
     {
@@ -226,6 +235,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 SelectedSvnBranchPreset = value;
                 LastSvnUrl = GetCurrentSvnRootUrl();
                 RefreshRecentFiles();
+                OnPropertyChanged(nameof(BranchCompareTargets));
                 SaveAppState();
             }
         }
@@ -816,8 +826,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private string GetCurrentSvnRootUrl()
     {
+        return GetSvnRootUrl(SelectedSvnBranch);
+    }
+
+    private string GetSvnRootUrl(string branchName)
+    {
         var template = string.IsNullOrWhiteSpace(SvnExcelPathTemplate) ? DefaultSvnExcelPathTemplate : SvnExcelPathTemplate;
-        return template.Contains("{0}", StringComparison.Ordinal) ? template.Replace("{0}", SelectedSvnBranch) : template;
+        return template.Contains("{0}", StringComparison.Ordinal) ? template.Replace("{0}", branchName) : template;
     }
 
     public async Task<IReadOnlyList<string>> DiscoverSvnBranchesAsync()
@@ -847,6 +862,111 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return SvnFolderService.CombineUrl(GetCurrentSvnRootUrl(), relativePath);
     }
 
+    private string GetSvnFileUrl(string branchName, string relativePath)
+    {
+        return SvnFolderService.CombineUrl(GetSvnRootUrl(branchName), relativePath);
+    }
+
+    private async Task CompareSelectedDocumentWithBranchAsync(string? targetBranch)
+    {
+        if (SelectedDocument is not { IsRemote: true, RemoteRelativePath: { Length: > 0 } relativePath } document
+            || string.IsNullOrWhiteSpace(targetBranch))
+        {
+            return;
+        }
+
+        await CompareRemoteFileWithBranchAsync(relativePath, document.FileName, targetBranch);
+    }
+
+    public async Task CompareFileNodeWithBranchAsync(FileTreeNode node, string? targetBranch)
+    {
+        if (node is not { IsRemote: true, IsDirectory: false, RelativePath: { Length: > 0 } relativePath }
+            || string.IsNullOrWhiteSpace(targetBranch))
+        {
+            return;
+        }
+
+        await CompareRemoteFileWithBranchAsync(relativePath, node.Name, targetBranch);
+    }
+
+    private async Task CompareRemoteFileWithBranchUsingTortoiseSvnAsync(string relativePath, string fileName, string targetBranch)
+    {
+        if (string.Equals(targetBranch, SelectedSvnBranch, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = $"正在准备 TortoiseSVN 比较: {SelectedSvnBranch} ↔ {targetBranch}...";
+
+        try
+        {
+            var leftPath = await _svnFolderService.CacheFileAsync(GetSvnFileUrl(SelectedSvnBranch, relativePath), $"{SelectedSvnBranch}-{fileName}");
+            var rightPath = await _svnFolderService.CacheFileAsync(GetSvnFileUrl(targetBranch, relativePath), $"{targetBranch}-{fileName}");
+            _tortoiseSvnDiffLauncher.LaunchDiff(
+                leftPath,
+                rightPath);
+            StatusText = "已打开 TortoiseSVN 比较窗口。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "打开 TortoiseSVN 比较失败。";
+            MessageBox.Show(ex.Message, "TortoiseSVN 比较失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task CompareRemoteFileWithBranchAsync(string relativePath, string fileName, string targetBranch)
+    {
+        if (string.Equals(targetBranch, SelectedSvnBranch, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (_tortoiseSvnDiffLauncher.IsAvailable)
+        {
+            await CompareRemoteFileWithBranchUsingTortoiseSvnAsync(relativePath, fileName, targetBranch);
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = $"未检测到 TortoiseSVN，使用内置比较: {SelectedSvnBranch} ↔ {targetBranch}...";
+
+        try
+        {
+            var forcedEncoding = GetForcedEncoding();
+            var forcedDelimiter = GetForcedDelimiter();
+            var leftResult = await LoadSvnCsvResultAsync(GetSvnFileUrl(SelectedSvnBranch, relativePath), fileName, forcedEncoding, forcedDelimiter);
+            var rightResult = await LoadSvnCsvResultAsync(GetSvnFileUrl(targetBranch, relativePath), fileName, forcedEncoding, forcedDelimiter);
+            var compareResult = _csvCompareService.Compare(
+                leftResult.Table,
+                rightResult.Table,
+                $"{SelectedSvnBranch} - {fileName}",
+                $"{targetBranch} - {fileName}");
+
+            var window = new BranchCompareWindow(compareResult);
+            if (Application.Current.MainWindow != null)
+            {
+                window.Owner = Application.Current.MainWindow;
+            }
+
+            window.ShowDialog();
+            StatusText = "分支比较完成。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "分支比较失败。";
+            MessageBox.Show(ex.Message, "分支比较失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void ConfigureRemoteDocumentSource(CsvDocumentViewModel document, string relativePath)
     {
         var fileName = Path.GetFileName(relativePath);
@@ -866,6 +986,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (!SvnBranches.Any(branch => string.Equals(branch, branchName, StringComparison.OrdinalIgnoreCase)))
         {
             SvnBranches.Add(branchName);
+            OnPropertyChanged(nameof(BranchCompareTargets));
             SaveSvnBranches();
             CommandManager.InvalidateRequerySuggested();
         }
@@ -894,6 +1015,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         SelectedSvnBranchPreset = addedBranches[0];
+        OnPropertyChanged(nameof(BranchCompareTargets));
         SaveSvnBranches();
         CommandManager.InvalidateRequerySuggested();
     }
@@ -919,6 +1041,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         SelectedSvnBranchPreset = SvnBranches.FirstOrDefault();
+        OnPropertyChanged(nameof(BranchCompareTargets));
         SaveSvnBranches();
         CommandManager.InvalidateRequerySuggested();
     }
@@ -1265,9 +1388,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async void OnTreeNodeSelected(FileTreeNode? node)
+    private void OnTreeNodeSelected(FileTreeNode? node)
     {
-        await OpenFileNodeAsync(node);
     }
 
     private void SelectedDocument_PropertyChanged(object? sender, PropertyChangedEventArgs e)
