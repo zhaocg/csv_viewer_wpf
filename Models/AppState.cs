@@ -10,7 +10,7 @@ public sealed class AppState
     public string? SelectedDelimiter { get; set; }
     public string? SelectedTheme { get; set; }
     public string? LastSvnUrl { get; set; }
-    public bool IsSvnMode { get; set; }
+    public bool IsSvnMode { get; set; } = true;
     public string? SvnExcelPathTemplate { get; set; }
     public string? SelectedSvnBranch { get; set; }
     public List<string> SvnBranches { get; set; } = [];

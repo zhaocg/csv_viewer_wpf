@@ -224,6 +224,8 @@ public partial class CsvDocumentGrid : UserControl
     {
         SetFrozenColumnCount(CsvDataGrid, count);
         SetFrozenColumnCount(FrozenRowsDataGrid, count);
+        UpdateFrozenColumnSeparator();
+        CellPaintVersion++;
     }
 
     private static void SetFrozenColumnCount(DataGrid dataGrid, int count)
@@ -233,6 +235,32 @@ public partial class CsvDocumentGrid : UserControl
         {
             dataGrid.FrozenColumnCount = frozenColumnCount;
         }
+    }
+
+    private void UpdateFrozenColumnSeparator()
+    {
+        var frozenColumnCount = GetFrozenColumnCount();
+        if (frozenColumnCount <= 0 || CsvDataGrid.Columns.Count == 0)
+        {
+            FrozenColumnSeparator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var orderedColumns = CsvDataGrid.Columns.OrderBy(c => c.DisplayIndex).ToList();
+        if (frozenColumnCount >= orderedColumns.Count)
+        {
+            FrozenColumnSeparator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var separatorLeft = CsvDataGrid.RowHeaderActualWidth;
+        for (var i = 0; i < frozenColumnCount; i++)
+        {
+            separatorLeft += orderedColumns[i].ActualWidth;
+        }
+
+        FrozenColumnSeparator.Margin = new Thickness(separatorLeft, 0, 0, 0);
+        FrozenColumnSeparator.Visibility = Visibility.Visible;
     }
 
     private int GetCurrentCellRowFreezeCount()
@@ -631,6 +659,7 @@ public partial class CsvDocumentGrid : UserControl
         }
 
         SyncColumnLayouts(FrozenRowsDataGrid, CsvDataGrid);
+        UpdateFrozenColumnSeparator();
     }
 
     private void QueueColumnLayoutSync()
@@ -638,6 +667,7 @@ public partial class CsvDocumentGrid : UserControl
         Dispatcher.BeginInvoke(() =>
         {
             SyncColumnLayouts(CsvDataGrid, FrozenRowsDataGrid);
+            UpdateFrozenColumnSeparator();
         }, System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
 
@@ -805,6 +835,23 @@ public partial class CsvDocumentGrid : UserControl
         return binding;
     }
 
+    private bool IsFrozenCell(DataGrid dataGrid, string columnName)
+    {
+        if (dataGrid == FrozenRowsDataGrid)
+        {
+            return true;
+        }
+
+        var frozenColumnCount = GetFrozenColumnCount();
+        if (frozenColumnCount <= 0)
+        {
+            return false;
+        }
+
+        var column = FindColumn(dataGrid, columnName);
+        return column != null && column.DisplayIndex < frozenColumnCount;
+    }
+
     private void AddCellPaintBindings(MultiBinding binding)
     {
         binding.Bindings.Add(new Binding());
@@ -949,12 +996,21 @@ public partial class CsvDocumentGrid : UserControl
 
             return documentGrid.TryGetCellPaintBrush(dataGrid, rowView, columnName, out var brush)
                 ? brush
-                : Brushes.Transparent;
+                : documentGrid.IsFrozenCell(dataGrid, columnName)
+                    ? GetFrozenBrush(rowView)
+                    : Brushes.Transparent;
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         {
             throw new NotSupportedException();
+        }
+
+        private static Brush GetFrozenBrush(DataRowView rowView)
+        {
+            var isOddRow = rowView.Row.Table.Rows.IndexOf(rowView.Row) % 2 == 1;
+            var key = isOddRow ? "FrozenCellAlternatingRowBrush" : "FrozenCellBackgroundBrush";
+            return Application.Current.TryFindResource(key) as Brush ?? Brushes.Transparent;
         }
     }
 

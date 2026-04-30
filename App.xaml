@@ -41,6 +41,8 @@
             <SolidColorBrush x:Key="DataGridAlternatingRowBrush" Color="#FAFCFF" />
             <SolidColorBrush x:Key="DataGridHeaderBrush" Color="#EEF3FA" />
             <SolidColorBrush x:Key="DataGridRowHeaderBrush" Color="#F6F8FC" />
+            <SolidColorBrush x:Key="FrozenCellBackgroundBrush" Color="#DDE7F3" />
+            <SolidColorBrush x:Key="FrozenCellAlternatingRowBrush" Color="#E6EDF7" />
             <SolidColorBrush x:Key="SearchHighlightBrush" Color="#A5F3FC" />
             <SolidColorBrush x:Key="LoadingOverlayBrush" Color="#C8F8FAFC" />
             <SolidColorBrush x:Key="DocumentTabBarBrush" Color="#E8EEF7" />

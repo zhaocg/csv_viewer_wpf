@@ -27,8 +27,8 @@
                   SelectedCellsChanged="FrozenRowsDataGrid_SelectedCellsChanged"
                   PreviewMouseLeftButtonDown="DataGrid_PreviewMouseLeftButtonDown"
                   GridLinesVisibility="All"
-                  Margin="0,0,0,6"
-                  RowHeaderWidth="60"
+                   Margin="0,0,0,2"
+                   RowHeaderWidth="60"
                   MaxHeight="240"
                   EnableRowVirtualization="False"
                   EnableColumnVirtualization="True"
@@ -50,6 +50,12 @@
                 </Style>
             </DataGrid.Style>
         </DataGrid>
+
+        <Border Grid.Row="0"
+                Height="1"
+                VerticalAlignment="Bottom"
+                Background="Black"
+                Visibility="{Binding HasFrozenRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
         <DataGrid x:Name="CsvDataGrid"
                   Grid.Row="1"
@@ -87,6 +93,14 @@
                 </Style>
             </DataGrid.Style>
         </DataGrid>
+
+        <Border x:Name="FrozenColumnSeparator"
+                Grid.RowSpan="2"
+                Width="1"
+                Background="Black"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                Visibility="Collapsed" />
 
         <Border Grid.RowSpan="2"
                 Margin="18"
