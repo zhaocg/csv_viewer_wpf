@@ -820,6 +820,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return template.Contains("{0}", StringComparison.Ordinal) ? template.Replace("{0}", SelectedSvnBranch) : template;
     }
 
+    public async Task<IReadOnlyList<string>> DiscoverSvnBranchesAsync()
+    {
+        var template = string.IsNullOrWhiteSpace(SvnExcelPathTemplate) ? DefaultSvnExcelPathTemplate : SvnExcelPathTemplate;
+        var placeholderIndex = template.IndexOf("{0}", StringComparison.Ordinal);
+        if (placeholderIndex < 0)
+        {
+            throw new InvalidOperationException("SVN Excel 路径模板必须包含 {0}，才能自动发现分支。");
+        }
+
+        var branchesRootUrl = template[..placeholderIndex].TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(branchesRootUrl))
+        {
+            throw new InvalidOperationException("无法从 SVN Excel 路径模板解析分支目录。");
+        }
+
+        var branchNames = await _svnFolderService.ListDirectoriesAsync(branchesRootUrl);
+        return branchNames
+            .Where(branch => !SvnBranches.Any(existing => string.Equals(existing, branch, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private string GetSvnFileUrl(string relativePath)
     {
         return SvnFolderService.CombineUrl(GetCurrentSvnRootUrl(), relativePath);
@@ -850,6 +872,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         SelectedSvnBranchPreset = branchName;
         NewSvnBranchName = string.Empty;
+    }
+
+    public void AddSvnBranches(IEnumerable<string> branchNames)
+    {
+        var addedBranches = branchNames
+            .Select(branch => branch.Trim())
+            .Where(branch => !string.IsNullOrWhiteSpace(branch))
+            .Where(branch => !SvnBranches.Any(existing => string.Equals(existing, branch, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (addedBranches.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var branch in addedBranches)
+        {
+            SvnBranches.Add(branch);
+        }
+
+        SelectedSvnBranchPreset = addedBranches[0];
+        SaveSvnBranches();
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void RemoveSelectedSvnBranch()

@@ -43,6 +43,22 @@ public sealed class SvnFolderService
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<string>> ListDirectoriesAsync(string svnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(svnUrl))
+        {
+            throw new ArgumentException("请输入 SVN 文件夹链接。", nameof(svnUrl));
+        }
+
+        var output = await RunSvnTextAsync(["list", svnUrl.Trim(), "--non-interactive"]);
+        return output
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(path => path.EndsWith('/'))
+            .Select(path => path.Trim('/'))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+    }
+
     public async Task<string> CacheFileAsync(string svnFileUrl, string fileName)
     {
         if (string.IsNullOrWhiteSpace(svnFileUrl))

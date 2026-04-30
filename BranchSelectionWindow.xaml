@@ -1,0 +1,72 @@
+<Window x:Class="CsvViewer.BranchSelectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="选择 SVN 分支"
+        Height="460"
+        Width="420"
+        MinHeight="360"
+        MinWidth="360"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <Border BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="22"
+            Background="{DynamicResource SurfaceBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Grid.Row="0" LastChildFill="True">
+                <Button DockPanel.Dock="Right"
+                        Content="关闭"
+                        Width="78"
+                        IsCancel="True"
+                        Click="Cancel_Click" />
+                <TextBlock Text="选择 SVN 分支"
+                           FontWeight="SemiBold"
+                           FontSize="20"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+            </DockPanel>
+
+            <TextBlock Grid.Row="1"
+                       Text="勾选要加入分支预设的分支。"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       Margin="0,6,0,14" />
+
+            <ListBox Grid.Row="2"
+                     ItemsSource="{Binding Branches}"
+                     BorderBrush="{DynamicResource AppBorderBrush}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox Content="{Binding Name}"
+                                  IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  Margin="2,4" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <DockPanel Grid.Row="3" Margin="0,14,0,0">
+                <Button DockPanel.Dock="Right"
+                        Content="添加选中"
+                        Width="92"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="Confirm_Click" />
+                <Button DockPanel.Dock="Right"
+                        Content="取消"
+                        Width="78"
+                        Margin="0,0,8,0"
+                        IsCancel="True"
+                        Click="Cancel_Click" />
+            </DockPanel>
+        </Grid>
+    </Border>
+</Window>
