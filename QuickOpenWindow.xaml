@@ -11,16 +11,13 @@
         AllowsTransparency="True"
         ShowInTaskbar="False"
         Background="Transparent"
-        Foreground="#E5E7EB"
+        Foreground="{DynamicResource TextPrimaryBrush}"
         PreviewKeyDown="Window_PreviewKeyDown">
-    <Border BorderBrush="#334155" BorderThickness="1" CornerRadius="18" Padding="18">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#111827" Offset="0" />
-                <GradientStop Color="#16213A" Offset="0.65" />
-                <GradientStop Color="#0F172A" Offset="1" />
-            </LinearGradientBrush>
-        </Border.Background>
+    <Border Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="18">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -34,24 +31,24 @@
                      FontSize="17"
                      Padding="12,0"
                      VerticalContentAlignment="Center"
-                     Background="#0B1220"
-                     Foreground="#F9FAFB"
-                     BorderBrush="#475569"
-                     CaretBrush="#F9FAFB"
+                     Background="{DynamicResource SurfaceElevatedBrush}"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     BorderBrush="{DynamicResource AppBorderBrush}"
+                     CaretBrush="{DynamicResource AccentBrush}"
                      TextChanged="SearchTextBox_TextChanged" />
 
             <TextBlock x:Name="HintTextBlock"
                        Grid.Row="1"
                        Text="输入文件名进行模糊搜索，Enter 打开，Esc 关闭。空输入显示最近打开。"
-                       Foreground="#94A3B8"
+                       Foreground="{DynamicResource TextMutedBrush}"
                        FontSize="12"
                        Margin="2,8,0,8" />
 
             <ListBox x:Name="ResultsListBox"
                      Grid.Row="2"
-                     Background="#0B1220"
-                     Foreground="#E5E7EB"
-                     BorderBrush="#26354D"
+                     Background="{DynamicResource SurfaceElevatedBrush}"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     BorderBrush="{DynamicResource AppBorderBrush}"
                      Padding="6"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -69,10 +66,11 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="ItemBorder" Property="Background" Value="#1E293B" />
+                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="ItemBorder" Property="Background" Value="#2563EB" />
+                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -87,7 +85,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="SVN" Foreground="#67E8F9" FontWeight="SemiBold" FontSize="11" Margin="0,2,8,0">
+                            <TextBlock Grid.Column="0" Text="SVN" Foreground="{DynamicResource AccentCyanBrush}" FontWeight="SemiBold" FontSize="11" Margin="0,2,8,0">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -100,8 +98,8 @@
                                 </TextBlock.Style>
                             </TextBlock>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Name}" Foreground="#F9FAFB" FontSize="14" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding FullPath}" Foreground="#9CA3AF" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding FullPath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>

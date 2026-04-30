@@ -205,6 +205,15 @@ public partial class MainWindow : Window
         MessageBox.Show("CSV Viewer\nWindows CSV 只读阅读器", "关于", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private void Help_Click(object sender, RoutedEventArgs e)
+    {
+        var helpWindow = new HelpWindow
+        {
+            Owner = this
+        };
+        helpWindow.ShowDialog();
+    }
+
     private void FolderTreeView_ItemExpanded(object sender, RoutedEventArgs e)
     {
         if (e.OriginalSource is TreeViewItem item && item.DataContext is FileTreeNode node)

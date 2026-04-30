@@ -43,6 +43,12 @@ public static class ThemeService
         SetBrush("DataGridHeaderBrush", "#EEF3FA");
         SetBrush("DataGridRowHeaderBrush", "#F6F8FC");
         SetBrush("LoadingOverlayBrush", "#C8F8FAFC");
+        SetBrush("DocumentTabBarBrush", "#E8EEF7");
+        SetBrush("DocumentTabBackgroundBrush", "#EEF3FA");
+        SetBrush("DocumentTabHoverBrush", "#E1E8F2");
+        SetBrush("DocumentTabSelectedBrush", "#FFFFFF");
+        SetBrush("DocumentTabTextBrush", "#526071");
+        SetBrush("DocumentTabSelectedTextBrush", "#111827");
         SetTopBar("#101827", "#1D2B4A", "#1E3A8A");
     }
 
@@ -69,6 +75,12 @@ public static class ThemeService
         SetBrush("DataGridHeaderBrush", "#252526");
         SetBrush("DataGridRowHeaderBrush", "#252526");
         SetBrush("LoadingOverlayBrush", "#B0181818");
+        SetBrush("DocumentTabBarBrush", "#0F0F0F");
+        SetBrush("DocumentTabBackgroundBrush", "#151515");
+        SetBrush("DocumentTabHoverBrush", "#1B1B1B");
+        SetBrush("DocumentTabSelectedBrush", "#2D2D30");
+        SetBrush("DocumentTabTextBrush", "#8A8F98");
+        SetBrush("DocumentTabSelectedTextBrush", "#FFFFFF");
         SetTopBar("#181818", "#1F1F1F", "#252526");
     }
 

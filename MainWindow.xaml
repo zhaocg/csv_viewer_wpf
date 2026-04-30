@@ -21,7 +21,7 @@
         <converters:SelectedDocumentVisibilityConverter x:Key="SelectedDocumentVisibilityConverter" />
 
         <Style x:Key="DocumentTabControlStyle" TargetType="{x:Type TabControl}" BasedOn="{StaticResource {x:Type TabControl}}">
-            <Setter Property="Background" Value="#0F0F0F" />
+            <Setter Property="Background" Value="{DynamicResource DocumentTabBarBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type TabControl}">
@@ -31,7 +31,7 @@
                                 <RowDefinition Height="0" />
                             </Grid.RowDefinitions>
                             <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="#262626"
+                                    BorderBrush="{DynamicResource AppBorderBrush}"
                                     BorderThickness="0,0,0,1">
                                 <TabPanel x:Name="HeaderPanel"
                                           IsItemsHost="True"
@@ -47,35 +47,42 @@
         </Style>
 
         <Style x:Key="DocumentTabItemStyle" TargetType="{x:Type TabItem}">
-            <Setter Property="Foreground" Value="#8A8F98" />
+            <Setter Property="Foreground" Value="{DynamicResource DocumentTabTextBrush}" />
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Background" Value="#151515" />
-            <Setter Property="BorderBrush" Value="#242424" />
+            <Setter Property="Background" Value="{DynamicResource DocumentTabBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type TabItem}">
-                        <Border x:Name="Root"
-                                MinHeight="34"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="0,0,1,0"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              RecognizesAccessKey="True" />
-                        </Border>
+                        <Grid MinHeight="34">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="0,0,1,0"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter ContentSource="Header"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True" />
+                            </Border>
+                            <Border x:Name="TopAccent"
+                                    Height="1"
+                                    Background="Transparent"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Top" />
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="#D4D4D4" />
-                                <Setter Property="Background" Value="#1B1B1B" />
+                                <Setter Property="Foreground" Value="{DynamicResource DocumentTabSelectedTextBrush}" />
+                                <Setter Property="Background" Value="{DynamicResource DocumentTabHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Panel.ZIndex" Value="10" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                                <Setter Property="Background" Value="#2D2D30" />
-                                <Setter Property="BorderBrush" Value="#4A4A4F" />
+                                <Setter Property="Foreground" Value="{DynamicResource DocumentTabSelectedTextBrush}" />
+                                <Setter Property="Background" Value="{DynamicResource DocumentTabSelectedBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+                                <Setter TargetName="TopAccent" Property="Background" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -149,6 +156,7 @@
                 <MenuItem Header="设置..." Click="Settings_Click" />
             </MenuItem>
             <MenuItem Header="帮助">
+                <MenuItem Header="使用说明" Click="Help_Click" />
                 <MenuItem Header="关于" Click="About_Click" />
             </MenuItem>
         </Menu>

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using CsvViewer.ViewModels;
 
 namespace CsvViewer;
@@ -18,5 +19,13 @@ public partial class SettingsWindow : Window
         }
 
         Close();
+    }
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
     }
 }

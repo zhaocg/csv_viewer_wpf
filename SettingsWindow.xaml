@@ -6,8 +6,17 @@
         Width="560"
         MinHeight="520"
         MinWidth="520"
-        WindowStartupLocation="CenterOwner">
-    <Border Margin="18" Padding="22" Style="{StaticResource CardBorderStyle}">
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <Border BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="22"
+            Background="{DynamicResource SurfaceBrush}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
