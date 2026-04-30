@@ -39,6 +39,8 @@ public partial class CsvDocumentGrid : UserControl
     private bool _syncingColumnWidths;
     private bool _syncingSelection;
     private bool _columnWidthRestoreQueued;
+    private ScrollViewer? _csvScrollViewer;
+    private ScrollViewer? _frozenRowsScrollViewer;
 
     private static readonly Brush PaintedCellBrush = CreateFrozenBrush(Color.FromRgb(253, 224, 71));
 
@@ -138,6 +140,8 @@ public partial class CsvDocumentGrid : UserControl
 
     private void CsvDocumentGrid_Loaded(object sender, RoutedEventArgs e)
     {
+        _csvScrollViewer = FindVisualChild<ScrollViewer>(CsvDataGrid);
+        _frozenRowsScrollViewer = FindVisualChild<ScrollViewer>(FrozenRowsDataGrid);
         ApplySelectAllButtonTheme(CsvDataGrid);
         ApplySelectAllButtonTheme(FrozenRowsDataGrid);
     }
@@ -870,6 +874,11 @@ public partial class CsvDocumentGrid : UserControl
             RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
             Mode = BindingMode.OneWay
         });
+        binding.Bindings.Add(new Binding("(ItemsControl.AlternationIndex)")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGridRow), 1),
+            Mode = BindingMode.OneWay
+        });
     }
 
     private void SyncHorizontalScroll(DataGrid target, double offset, double change)
@@ -879,7 +888,7 @@ public partial class CsvDocumentGrid : UserControl
             return;
         }
 
-        var scrollViewer = FindVisualChild<ScrollViewer>(target);
+        var scrollViewer = GetScrollViewer(target);
         if (scrollViewer == null)
         {
             return;
@@ -888,6 +897,21 @@ public partial class CsvDocumentGrid : UserControl
         _syncingHorizontalScroll = true;
         scrollViewer.ScrollToHorizontalOffset(offset);
         _syncingHorizontalScroll = false;
+    }
+
+    private ScrollViewer? GetScrollViewer(DataGrid dataGrid)
+    {
+        if (dataGrid == CsvDataGrid)
+        {
+            return _csvScrollViewer ??= FindVisualChild<ScrollViewer>(CsvDataGrid);
+        }
+
+        if (dataGrid == FrozenRowsDataGrid)
+        {
+            return _frozenRowsScrollViewer ??= FindVisualChild<ScrollViewer>(FrozenRowsDataGrid);
+        }
+
+        return FindVisualChild<ScrollViewer>(dataGrid);
     }
 
     private void SyncColumnLayouts(DataGrid source, DataGrid target)
@@ -997,7 +1021,7 @@ public partial class CsvDocumentGrid : UserControl
             return documentGrid.TryGetCellPaintBrush(dataGrid, rowView, columnName, out var brush)
                 ? brush
                 : documentGrid.IsFrozenCell(dataGrid, columnName)
-                    ? GetFrozenBrush(rowView)
+                    ? GetFrozenBrush(values)
                     : Brushes.Transparent;
         }
 
@@ -1006,9 +1030,9 @@ public partial class CsvDocumentGrid : UserControl
             throw new NotSupportedException();
         }
 
-        private static Brush GetFrozenBrush(DataRowView rowView)
+        private static Brush GetFrozenBrush(IReadOnlyList<object> values)
         {
-            var isOddRow = rowView.Row.Table.Rows.IndexOf(rowView.Row) % 2 == 1;
+            var isOddRow = values.Count > 4 && values[4] is int alternationIndex && alternationIndex == 1;
             var key = isOddRow ? "FrozenCellAlternatingRowBrush" : "FrozenCellBackgroundBrush";
             return Application.Current.TryFindResource(key) as Brush ?? Brushes.Transparent;
         }
