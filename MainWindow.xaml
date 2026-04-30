@@ -9,6 +9,7 @@
         xmlns:models="clr-namespace:CsvViewer.Models"
         mc:Ignorable="d"
         Title="CSV Viewer" Height="720" Width="1180"
+        WindowState="Maximized"
         MinHeight="520" MinWidth="860"
         AllowDrop="True"
         Loaded="Window_Loaded"
@@ -344,7 +345,32 @@
                             </Style>
                         </TabControl.Style>
                         <TabControl.ItemContainerStyle>
-                            <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource DocumentTabItemStyle}" />
+                            <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource DocumentTabItemStyle}">
+                                <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="DocumentTabItem_PreviewMouseRightButtonDown" />
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu MinWidth="140">
+                                            <MenuItem Header="关闭"
+                                                      Style="{StaticResource ContextMenuItemStyle}"
+                                                      Command="{Binding PlacementTarget.Tag.CloseDocumentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="关闭其他"
+                                                      Style="{StaticResource ContextMenuItemStyle}"
+                                                      Command="{Binding PlacementTarget.Tag.CloseOtherDocumentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="关闭右侧"
+                                                      Style="{StaticResource ContextMenuItemStyle}"
+                                                      Command="{Binding PlacementTarget.Tag.CloseDocumentsToRightCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Separator Style="{StaticResource ContextMenuSeparatorStyle}" />
+                                            <MenuItem Header="关闭全部"
+                                                      Style="{StaticResource ContextMenuItemStyle}"
+                                                      Command="{Binding PlacementTarget.Tag.CloseAllDocumentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        </ContextMenu>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                         </TabControl.ItemContainerStyle>
                         <TabControl.ItemTemplate>
                             <DataTemplate>

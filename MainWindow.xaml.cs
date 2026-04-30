@@ -200,6 +200,15 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(() => GetActiveDocumentGrid()?.ApplyDocumentFrozenState(), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
+    private void DocumentTabItem_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is TabItem tabItem)
+        {
+            tabItem.IsSelected = true;
+            e.Handled = false;
+        }
+    }
+
     private void About_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show("CSV Viewer\nWindows CSV 只读阅读器", "关于", MessageBoxButton.OK, MessageBoxImage.Information);

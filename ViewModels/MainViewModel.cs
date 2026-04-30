@@ -80,6 +80,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplySearchCommand = new RelayCommand(async _ => await ApplySearchAsync(), _ => !IsBusy && SelectedDocument != null);
         ClearSearchCommand = new RelayCommand(_ => ClearSearch(), _ => !IsBusy && !string.IsNullOrEmpty(SelectedDocument?.SearchText));
         CloseDocumentCommand = new RelayCommand(CloseDocument, _ => !IsBusy);
+        CloseOtherDocumentsCommand = new RelayCommand(CloseOtherDocuments, parameter => !IsBusy && parameter is CsvDocumentViewModel && Documents.Count > 1);
+        CloseDocumentsToRightCommand = new RelayCommand(CloseDocumentsToRight, parameter => !IsBusy && parameter is CsvDocumentViewModel document && Documents.IndexOf(document) >= 0 && Documents.IndexOf(document) < Documents.Count - 1);
+        CloseAllDocumentsCommand = new RelayCommand(_ => CloseAllDocuments(), _ => !IsBusy && Documents.Count > 0);
         AddSvnBranchCommand = new RelayCommand(_ => AddSvnBranch());
         RemoveSvnBranchCommand = new RelayCommand(_ => RemoveSelectedSvnBranch(), _ => SvnBranches.Count > 1 && !string.IsNullOrWhiteSpace(SelectedSvnBranchPreset));
     }
@@ -93,6 +96,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ApplySearchCommand { get; }
     public ICommand ClearSearchCommand { get; }
     public ICommand CloseDocumentCommand { get; }
+    public ICommand CloseOtherDocumentsCommand { get; }
+    public ICommand CloseDocumentsToRightCommand { get; }
+    public ICommand CloseAllDocumentsCommand { get; }
     public ICommand AddSvnBranchCommand { get; }
     public ICommand RemoveSvnBranchCommand { get; }
 
@@ -714,6 +720,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             StatusText = "请打开或拖拽 CSV 文件。";
         }
+
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void CloseOtherDocuments(object? parameter)
+    {
+        if (parameter is not CsvDocumentViewModel document || !Documents.Contains(document))
+        {
+            return;
+        }
+
+        for (var index = Documents.Count - 1; index >= 0; index--)
+        {
+            if (Documents[index] != document)
+            {
+                Documents.RemoveAt(index);
+            }
+        }
+
+        SelectedDocument = document;
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void CloseDocumentsToRight(object? parameter)
+    {
+        if (parameter is not CsvDocumentViewModel document)
+        {
+            return;
+        }
+
+        var documentIndex = Documents.IndexOf(document);
+        if (documentIndex < 0)
+        {
+            return;
+        }
+
+        for (var index = Documents.Count - 1; index > documentIndex; index--)
+        {
+            Documents.RemoveAt(index);
+        }
+
+        SelectedDocument = document;
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void CloseAllDocuments()
+    {
+        Documents.Clear();
+        SelectedDocument = null;
+        StatusText = "请打开或拖拽 CSV 文件。";
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private Encoding? GetForcedEncoding()
