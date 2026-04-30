@@ -42,6 +42,7 @@ public static class ThemeService
         SetBrush("DataGridAlternatingRowBrush", "#FAFCFF");
         SetBrush("DataGridHeaderBrush", "#EEF3FA");
         SetBrush("DataGridRowHeaderBrush", "#F6F8FC");
+        SetBrush("SearchHighlightBrush", "#A5F3FC");
         SetBrush("LoadingOverlayBrush", "#C8F8FAFC");
         SetBrush("DocumentTabBarBrush", "#E8EEF7");
         SetBrush("DocumentTabBackgroundBrush", "#EEF3FA");
@@ -74,6 +75,7 @@ public static class ThemeService
         SetBrush("DataGridAlternatingRowBrush", "#202020");
         SetBrush("DataGridHeaderBrush", "#252526");
         SetBrush("DataGridRowHeaderBrush", "#252526");
+        SetBrush("SearchHighlightBrush", "#67E8F9");
         SetBrush("LoadingOverlayBrush", "#B0181818");
         SetBrush("DocumentTabBarBrush", "#0F0F0F");
         SetBrush("DocumentTabBackgroundBrush", "#151515");

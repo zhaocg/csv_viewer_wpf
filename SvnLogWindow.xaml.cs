@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Input;
 
 namespace CsvViewer;
 
@@ -61,6 +62,14 @@ public partial class SvnLogWindow : Window, INotifyPropertyChanged
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
     }
 
     private async Task LoadNextPageAsync()

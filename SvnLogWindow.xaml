@@ -10,19 +10,17 @@
         AllowsTransparency="True"
         Background="Transparent"
         WindowStartupLocation="CenterOwner"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     </Window.Resources>
 
-    <Border BorderBrush="#334155" BorderThickness="1" CornerRadius="18" Padding="18">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#111827" Offset="0" />
-                <GradientStop Color="#16213A" Offset="0.65" />
-                <GradientStop Color="#0F172A" Offset="1" />
-            </LinearGradientBrush>
-        </Border.Background>
+    <Border BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="18"
+            Background="{DynamicResource SurfaceBrush}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -38,21 +36,21 @@
                         IsCancel="True"
                         Click="Close_Click" />
                 <StackPanel>
-                    <TextBlock Text="SVN 日志"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               Foreground="#F8FAFC" />
-                    <TextBlock Text="{Binding FileUrl}"
-                               Margin="0,6,16,0"
-                               Foreground="#94A3B8"
-                               TextTrimming="CharacterEllipsis" />
+                     <TextBlock Text="SVN 日志"
+                                FontSize="20"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextPrimaryBrush}" />
+                     <TextBlock Text="{Binding FileUrl}"
+                                Margin="0,6,16,0"
+                                Foreground="{DynamicResource TextMutedBrush}"
+                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </DockPanel>
 
             <TextBlock Grid.Row="1"
                        Text="{Binding StatusText}"
                        Margin="0,14,0,10"
-                       Foreground="#CBD5E1" />
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
 
             <DataGrid Grid.Row="2"
                       ItemsSource="{Binding Entries}"

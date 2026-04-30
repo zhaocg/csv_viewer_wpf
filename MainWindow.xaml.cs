@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace CsvViewer;
 
@@ -18,12 +19,12 @@ public partial class MainWindow : Window
         FolderTreeView.ItemContainerGenerator.StatusChanged += FolderTreeViewItemContainerGenerator_StatusChanged;
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    public async Task InitializeForStartupAsync(IProgress<StartupProgress>? progress = null)
     {
         if (DataContext is MainViewModel viewModel)
         {
-            await viewModel.InitializeAsync();
-            _ = Dispatcher.BeginInvoke(ExpandRootTreeItem, System.Windows.Threading.DispatcherPriority.Loaded);
+            await viewModel.InitializeAsync(progress);
+            _ = Dispatcher.BeginInvoke(ExpandRootTreeItem, DispatcherPriority.Loaded);
         }
     }
 
@@ -106,11 +107,6 @@ public partial class MainWindow : Window
         {
             await viewModel.LoadFilesAsync(files);
         }
-    }
-
-    private void CopySelected_Click(object sender, RoutedEventArgs e)
-    {
-        GetActiveDocumentGrid()?.CopySelectedCells();
     }
 
     private void ClearFreeze_Click(object sender, RoutedEventArgs e)

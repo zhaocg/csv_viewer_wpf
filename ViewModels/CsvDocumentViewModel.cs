@@ -25,6 +25,9 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
     private string _statusText;
     private string _displayMessage = string.Empty;
     private string _searchText = string.Empty;
+    private bool _isSearchCaseSensitive;
+    private bool _isSearchWholeWord;
+    private bool _isSearchRegex;
     private string _rowCountText;
     private bool _hasFrozenRows;
     private int _frozenRowCount;
@@ -110,6 +113,24 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
     {
         get => _searchText;
         set => SetProperty(ref _searchText, value);
+    }
+
+    public bool IsSearchCaseSensitive
+    {
+        get => _isSearchCaseSensitive;
+        set => SetProperty(ref _isSearchCaseSensitive, value);
+    }
+
+    public bool IsSearchWholeWord
+    {
+        get => _isSearchWholeWord;
+        set => SetProperty(ref _isSearchWholeWord, value);
+    }
+
+    public bool IsSearchRegex
+    {
+        get => _isSearchRegex;
+        set => SetProperty(ref _isSearchRegex, value);
     }
 
     public string StatusText
@@ -198,7 +219,19 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         }
 
         StatusText = "正在搜索...";
-        var filtered = await Task.Run(() => FilterTable(_sourceTable, keyword));
+        SearchMatcher matcher;
+        try
+        {
+            matcher = SearchMatcher.Create(keyword, IsSearchCaseSensitive, IsSearchWholeWord, IsSearchRegex);
+        }
+        catch (ArgumentException ex)
+        {
+            StatusText = $"正则表达式无效: {ex.Message}";
+            return;
+        }
+
+        var isWholeWord = IsSearchWholeWord;
+        var filtered = await Task.Run(() => FilterTable(_sourceTable, matcher, isWholeWord));
         SetActiveTable(filtered);
         RowCountText = filtered.Rows.Count.ToString("N0");
         StatusText = $"搜索完成，匹配 {filtered.Rows.Count:N0} 行。";
@@ -264,12 +297,12 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
             : _activeTable.DefaultView;
     }
 
-    private static DataTable FilterTable(DataTable table, string keyword)
+    private static DataTable FilterTable(DataTable table, SearchMatcher matcher, bool isWholeWord)
     {
         var filtered = table.Clone();
         foreach (DataRow row in table.Rows)
         {
-            if (row.ItemArray.Any(value => Convert.ToString(value)?.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
+            if (row.ItemArray.Any(value => matcher.IsMatch(Convert.ToString(value), isWholeWord)))
             {
                 filtered.ImportRow(row);
             }

@@ -5,6 +5,7 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:SearchHighlightBrushConverter x:Key="SearchHighlightBrushConverter" />
+        <converters:SearchHighlightForegroundConverter x:Key="SearchHighlightForegroundConverter" />
     </UserControl.Resources>
 
     <Grid Background="{StaticResource SurfaceBrush}">

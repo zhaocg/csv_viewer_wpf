@@ -10,6 +10,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace CsvViewer;
 
@@ -39,7 +40,7 @@ public partial class CsvDocumentGrid : UserControl
     private bool _syncingSelection;
     private bool _columnWidthRestoreQueued;
 
-    private static readonly Brush PaintedCellBrush = CreateFrozenBrush(Color.FromRgb(254, 240, 138));
+    private static readonly Brush PaintedCellBrush = CreateFrozenBrush(Color.FromRgb(253, 224, 71));
 
     public int CellPaintVersion
     {
@@ -65,9 +66,14 @@ public partial class CsvDocumentGrid : UserControl
         Loaded += CsvDocumentGrid_Loaded;
     }
 
-    public void CopySelectedCells()
+    public bool CopySelectedCells()
     {
-        _clipboardService.CopySelectedCells(FrozenRowsDataGrid.IsKeyboardFocusWithin ? FrozenRowsDataGrid : CsvDataGrid);
+        if (FrozenRowsDataGrid.SelectedCells.Count > 0)
+        {
+            return _clipboardService.CopySelectedCells(FrozenRowsDataGrid);
+        }
+
+        return _clipboardService.CopySelectedCells(CsvDataGrid);
     }
 
     public bool PaintSelectedCells()
@@ -644,17 +650,45 @@ public partial class CsvDocumentGrid : UserControl
                 return;
             }
 
-            button.Background = TryFindResource("DataGridHeaderBrush") as Brush ?? button.Background;
-            button.BorderBrush = TryFindResource("GridLineBrush") as Brush ?? button.BorderBrush;
-            button.Foreground = TryFindResource("TextMutedBrush") as Brush ?? button.Foreground;
+            button.SetResourceReference(Control.BackgroundProperty, "DataGridHeaderBrush");
+            button.SetResourceReference(Control.BorderBrushProperty, "GridLineBrush");
+            button.SetResourceReference(Control.ForegroundProperty, "TextMutedBrush");
+            button.BorderThickness = new Thickness(0, 0, 1, 1);
+            button.Template = CreateSelectAllButtonTemplate();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private static ControlTemplate CreateSelectAllButtonTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+        border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+
+        var marker = new FrameworkElementFactory(typeof(Polygon));
+        marker.SetValue(Polygon.PointsProperty, PointCollection.Parse("0,10 10,10 10,0"));
+        marker.SetValue(Polygon.WidthProperty, 10.0);
+        marker.SetValue(Polygon.HeightProperty, 10.0);
+        marker.SetValue(Polygon.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+        marker.SetValue(Polygon.VerticalAlignmentProperty, VerticalAlignment.Bottom);
+        marker.SetValue(Polygon.MarginProperty, new Thickness(0, 0, 4, 4));
+        marker.SetBinding(Shape.FillProperty, new Binding(nameof(Control.Foreground))
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent)
+        });
+
+        border.AppendChild(marker);
+
+        return new ControlTemplate(typeof(Button))
+        {
+            VisualTree = border
+        };
     }
 
     private Style CreateSearchHighlightTextStyle()
     {
         var style = new Style(typeof(TextBlock));
         style.Setters.Add(new Setter(TextBlock.PaddingProperty, new Thickness(2, 0, 2, 0)));
-        style.Setters.Add(new Setter(TextBlock.ForegroundProperty, new DynamicResourceExtension("TextPrimaryBrush")));
 
         if (FindResource("SearchHighlightBrushConverter") is IMultiValueConverter converter)
         {
@@ -669,8 +703,60 @@ public partial class CsvDocumentGrid : UserControl
                 RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
                 Mode = BindingMode.OneWay
             });
+            backgroundBinding.Bindings.Add(new Binding("DataContext.IsSearchCaseSensitive")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            backgroundBinding.Bindings.Add(new Binding("DataContext.IsSearchWholeWord")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            backgroundBinding.Bindings.Add(new Binding("DataContext.IsSearchRegex")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
 
             style.Setters.Add(new Setter(TextBlock.BackgroundProperty, backgroundBinding));
+        }
+
+        if (FindResource("SearchHighlightForegroundConverter") is IMultiValueConverter foregroundConverter)
+        {
+            var foregroundBinding = new MultiBinding { Converter = foregroundConverter };
+            foregroundBinding.Bindings.Add(new Binding(nameof(TextBlock.Text))
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.Self),
+                Mode = BindingMode.OneWay
+            });
+            foregroundBinding.Bindings.Add(new Binding("DataContext.SearchText")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            foregroundBinding.Bindings.Add(new Binding("DataContext.IsSearchCaseSensitive")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            foregroundBinding.Bindings.Add(new Binding("DataContext.IsSearchWholeWord")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            foregroundBinding.Bindings.Add(new Binding("DataContext.IsSearchRegex")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(CsvDocumentGrid), 1),
+                Mode = BindingMode.OneWay
+            });
+            foregroundBinding.Bindings.Add(new Binding(nameof(Control.Foreground))
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGridCell), 1),
+                Mode = BindingMode.OneWay
+            });
+
+            style.Setters.Add(new Setter(TextBlock.ForegroundProperty, foregroundBinding));
         }
 
         return style;

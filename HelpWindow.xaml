@@ -6,7 +6,12 @@
         Height="640"
         MinWidth="620"
         MinHeight="460"
-        WindowStartupLocation="CenterOwner">
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Window.Resources>
         <Style x:Key="HelpHeadingTextStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="15" />
@@ -21,23 +26,33 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="18" Padding="22" Style="{StaticResource CardBorderStyle}">
+    <Border BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="22"
+            Background="{DynamicResource SurfaceBrush}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Margin="0,0,0,14">
-                <TextBlock Text="CSV Viewer 使用说明"
-                           FontSize="22"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="用于快速查看本地和 SVN 远程 CSV/TXT 表格文件。"
-                           Margin="0,6,0,0"
-                           Foreground="{DynamicResource TextSecondaryBrush}" />
-            </StackPanel>
+            <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,14">
+                <Button DockPanel.Dock="Right"
+                        Content="关闭"
+                        Width="78"
+                        IsCancel="True"
+                        Click="Close_Click" />
+                <StackPanel>
+                    <TextBlock Text="CSV Viewer 使用说明"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="用于快速查看本地和 SVN 远程 CSV/TXT 表格文件。"
+                               Margin="0,6,16,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+            </DockPanel>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
@@ -72,15 +87,6 @@
                     <TextBlock Style="{StaticResource HelpBodyTextStyle}"><Run Text="支持亮色和暗色主题。暗色主题参考 VS Code 深色风格，适合长时间查看表格。" /></TextBlock>
                 </StackPanel>
             </ScrollViewer>
-
-            <Button Grid.Row="2"
-                    Content="关闭"
-                    Width="78"
-                    HorizontalAlignment="Right"
-                    IsCancel="True"
-                    Margin="0,14,0,0"
-                    Style="{StaticResource PrimaryButtonStyle}"
-                    Click="Close_Click" />
         </Grid>
     </Border>
 </Window>

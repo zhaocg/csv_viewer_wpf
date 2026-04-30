@@ -12,7 +12,6 @@
         WindowState="Maximized"
         MinHeight="520" MinWidth="860"
         AllowDrop="True"
-        Loaded="Window_Loaded"
         Drop="Window_Drop"
         DragOver="Window_DragOver"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -147,14 +146,12 @@
                 <Separator />
                 <MenuItem Header="退出" Click="Exit_Click" />
             </MenuItem>
-            <MenuItem Header="编辑">
-                <MenuItem Header="复制选中内容" Click="CopySelected_Click" InputGestureText="Ctrl+C" />
-            </MenuItem>
             <MenuItem Header="视图">
                 <MenuItem Header="冻结到当前单元格" Click="FreezeToCurrentCell_Click" />
                 <MenuItem Header="取消冻结" Click="ClearFreeze_Click" Visibility="{Binding HasFrozenCells, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <Separator />
-                <MenuItem Header="设置..." Click="Settings_Click" />
+            </MenuItem>
+            <MenuItem Header="设置">
+                <MenuItem Header="全局设置" Click="Settings_Click" />
             </MenuItem>
             <MenuItem Header="帮助">
                 <MenuItem Header="使用说明" Click="Help_Click" />
@@ -175,7 +172,6 @@
                     <Button Content="冻结到当前单元格" Click="FreezeToCurrentCell_Click" Padding="12,6" Margin="14,0,0,0" />
                     <Button Content="取消冻结" Click="ClearFreeze_Click" Padding="12,6" Margin="6,0,0,0" Visibility="{Binding HasFrozenCells, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Content="刷色" Click="PaintSelectedCells_Click" Padding="12,6" Margin="6,0,0,0" ToolTip="给选中的单元格临时刷色" />
-                    <Button Content="设置" Click="Settings_Click" Padding="12,6" Margin="6,0,0,0" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -183,17 +179,25 @@
                              Width="290"
                              Text="{Binding SelectedDocument.SearchText, UpdateSourceTrigger=PropertyChanged}"
                              VerticalContentAlignment="Center"
-                             Background="#0B1220"
-                             Foreground="#F8FAFC"
-                             BorderBrush="#334155"
                              ToolTip="搜索当前表格 (Ctrl+F)">
                         <TextBox.InputBindings>
                             <KeyBinding Key="Enter" Command="{Binding ApplySearchCommand}" />
                         </TextBox.InputBindings>
                     </TextBox>
+                    <ToggleButton Content="Aa"
+                                  IsChecked="{Binding SelectedDocument.IsSearchCaseSensitive, Mode=TwoWay}"
+                                  Style="{StaticResource SearchOptionToggleStyle}"
+                                  ToolTip="大小写敏感" />
+                    <ToggleButton Content="ab"
+                                  IsChecked="{Binding SelectedDocument.IsSearchWholeWord, Mode=TwoWay}"
+                                  Style="{StaticResource SearchOptionToggleStyle}"
+                                  ToolTip="全词匹配" />
+                    <ToggleButton Content=".*"
+                                  IsChecked="{Binding SelectedDocument.IsSearchRegex, Mode=TwoWay}"
+                                  Style="{StaticResource SearchOptionToggleStyle}"
+                                  ToolTip="正则表达式" />
                     <Button Content="搜索" Command="{Binding ApplySearchCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" Margin="8,0,0,0" />
                     <Button Content="清除" Command="{Binding ClearSearchCommand}" Padding="12,6" Margin="6,0,0,0" />
-                    <Button Content="复制" Click="CopySelected_Click" Padding="12,6" Margin="14,0,0,0" />
                 </StackPanel>
             </DockPanel>
         </Border>

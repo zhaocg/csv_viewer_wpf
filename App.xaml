@@ -1,8 +1,7 @@
 ﻿<Application x:Class="CsvViewer.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:CsvViewer"
-             StartupUri="MainWindow.xaml">
+             xmlns:local="clr-namespace:CsvViewer">
     <Application.Resources>
         <ResourceDictionary>
             <Color x:Key="AppBackgroundColor">#F3F6FB</Color>
@@ -42,6 +41,7 @@
             <SolidColorBrush x:Key="DataGridAlternatingRowBrush" Color="#FAFCFF" />
             <SolidColorBrush x:Key="DataGridHeaderBrush" Color="#EEF3FA" />
             <SolidColorBrush x:Key="DataGridRowHeaderBrush" Color="#F6F8FC" />
+            <SolidColorBrush x:Key="SearchHighlightBrush" Color="#A5F3FC" />
             <SolidColorBrush x:Key="LoadingOverlayBrush" Color="#C8F8FAFC" />
             <SolidColorBrush x:Key="DocumentTabBarBrush" Color="#E8EEF7" />
             <SolidColorBrush x:Key="DocumentTabBackgroundBrush" Color="#EEF3FA" />
@@ -400,6 +400,15 @@
                 </Setter>
             </Style>
 
+            <Style x:Key="SearchOptionToggleStyle" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="MinWidth" Value="30" />
+                <Setter Property="Padding" Value="6,4" />
+                <Setter Property="Margin" Value="2,0,0,0" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="ToolTipService.InitialShowDelay" Value="200" />
+            </Style>
+
             <Style TargetType="{x:Type TextBox}">
                 <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -647,6 +656,37 @@
                 <Setter Property="ColumnHeaderHeight" Value="34" />
                 <Setter Property="RowHeight" Value="30" />
                 <Setter Property="AlternationCount" Value="2" />
+            </Style>
+
+            <Style TargetType="{x:Type DataGridRow}">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Style.Triggers>
+                    <Trigger Property="AlternationIndex" Value="1">
+                        <Setter Property="Background" Value="{DynamicResource DataGridAlternatingRowBrush}" />
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style TargetType="{x:Type DataGridCell}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource GridLineBrush}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="4,0" />
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                    </Trigger>
+                </Style.Triggers>
             </Style>
 
             <Style TargetType="{x:Type DataGridColumnHeader}">

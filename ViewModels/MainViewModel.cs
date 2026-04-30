@@ -521,15 +521,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(IProgress<StartupProgress>? progress = null)
     {
+        progress?.Report(new StartupProgress("正在读取启动配置...", 50));
+
         if (IsSvnMode)
         {
+            progress?.Report(new StartupProgress($"正在加载 SVN 分支: {SelectedSvnBranch}...", 60));
             await LoadCurrentSvnFolderAsync(reloadOpenedDocuments: false);
+            progress?.Report(new StartupProgress("SVN 分支加载完成", 85));
             return;
         }
 
+        progress?.Report(new StartupProgress("正在恢复上次本地文件夹...", 60));
         await LoadLastLocalFolderAsync();
+        progress?.Report(new StartupProgress("本地工作区恢复完成", 85));
     }
 
     private async Task LoadLastLocalFolderAsync()

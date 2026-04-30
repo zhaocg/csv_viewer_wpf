@@ -13,4 +13,9 @@ public partial class HelpWindow : Window
     {
         Close();
     }
+
+    private void Window_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        DragMove();
+    }
 }

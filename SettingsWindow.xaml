@@ -22,14 +22,19 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0"
-                   Text="全局设置"
-                   FontWeight="SemiBold"
-                   FontSize="20"
-                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <DockPanel Grid.Row="0" LastChildFill="True">
+            <Button DockPanel.Dock="Right"
+                    Content="关闭"
+                    Width="78"
+                    IsCancel="True"
+                    Click="Close_Click" />
+            <TextBlock Text="全局设置"
+                       FontWeight="SemiBold"
+                       FontSize="20"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DockPanel>
 
         <TextBlock Grid.Row="1"
                    Text="这些设置会应用到所有已打开和后续打开的表格。"
@@ -103,14 +108,6 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Button Grid.Row="3"
-                Content="关闭"
-                Width="78"
-                HorizontalAlignment="Right"
-                IsCancel="True"
-                Margin="0,14,0,0"
-                Style="{StaticResource PrimaryButtonStyle}"
-                Click="Close_Click" />
     </Grid>
     </Border>
 </Window>
