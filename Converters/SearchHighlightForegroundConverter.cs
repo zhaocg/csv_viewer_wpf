@@ -8,6 +8,8 @@ namespace CsvViewer.Converters;
 
 public sealed class SearchHighlightForegroundConverter : IMultiValueConverter
 {
+    private readonly SearchMatcherCache _matcherCache = new();
+
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
         var cellText = values.Length > 0 ? values[0]?.ToString() : null;
@@ -25,7 +27,7 @@ public sealed class SearchHighlightForegroundConverter : IMultiValueConverter
         SearchMatcher matcher;
         try
         {
-            matcher = SearchMatcher.Create(keyword, isCaseSensitive, isWholeWord, isRegex);
+            matcher = _matcherCache.Get(keyword, isCaseSensitive, isWholeWord, isRegex);
         }
         catch (ArgumentException)
         {

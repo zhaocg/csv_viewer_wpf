@@ -188,6 +188,12 @@ public partial class CsvDocumentGrid : UserControl
 
     private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
     {
+        if (e.PropertyName == CsvSearchFilter.MatchColumnName)
+        {
+            e.Cancel = true;
+            return;
+        }
+
         if (e.Column is DataGridTextColumn textColumn)
         {
             textColumn.SortMemberPath = e.PropertyName;

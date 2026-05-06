@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using System.Data;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -212,6 +211,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         var keyword = SearchText.Trim();
         if (string.IsNullOrEmpty(keyword))
         {
+            CsvSearchFilter.ClearFilterView(_sourceTable);
             SetActiveTable(_sourceTable);
             StatusText = "已清除搜索。";
             RowCountText = _sourceTable.Rows.Count.ToString("N0");
@@ -231,15 +231,17 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         }
 
         var isWholeWord = IsSearchWholeWord;
-        var filtered = await Task.Run(() => FilterTable(_sourceTable, matcher, isWholeWord));
-        SetActiveTable(filtered);
-        RowCountText = filtered.Rows.Count.ToString("N0");
-        StatusText = $"搜索完成，匹配 {filtered.Rows.Count:N0} 行。";
+        var matches = await Task.Run(() => CsvSearchFilter.FindMatches(_sourceTable, matcher, isWholeWord));
+        var filterResult = CsvSearchFilter.ApplyFilterView(_sourceTable, matches);
+        SetActiveView(_sourceTable, filterResult.View);
+        RowCountText = filterResult.MatchCount.ToString("N0");
+        StatusText = $"搜索完成，匹配 {filterResult.MatchCount:N0} 行。";
     }
 
     public void ClearSearch()
     {
         SearchText = string.Empty;
+        CsvSearchFilter.ClearFilterView(_sourceTable);
         SetActiveTable(_sourceTable);
         RowCountText = _sourceTable.Rows.Count.ToString("N0");
         StatusText = "已清除搜索。";
@@ -274,8 +276,16 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
 
     private void SetActiveTable(DataTable table)
     {
+        table.DefaultView.RowFilter = string.Empty;
         _activeTable = table;
         TableView = table.DefaultView;
+        RebuildSplitViews();
+    }
+
+    private void SetActiveView(DataTable table, DataView view)
+    {
+        _activeTable = table;
+        TableView = view;
         RebuildSplitViews();
     }
 
@@ -287,28 +297,14 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         if (FrozenRowCount == 0)
         {
             FrozenTableView = null;
-            ScrollableTableView = _activeTable.DefaultView;
+            ScrollableTableView = TableView;
             return;
         }
 
         FrozenTableView = CopyRows(_sourceTable, 0, FrozenRowCount).DefaultView;
         ScrollableTableView = ReferenceEquals(_activeTable, _sourceTable)
             ? CopyRows(_activeTable, FrozenRowCount, _activeTable.Rows.Count - FrozenRowCount).DefaultView
-            : _activeTable.DefaultView;
-    }
-
-    private static DataTable FilterTable(DataTable table, SearchMatcher matcher, bool isWholeWord)
-    {
-        var filtered = table.Clone();
-        foreach (DataRow row in table.Rows)
-        {
-            if (row.ItemArray.Any(value => matcher.IsMatch(Convert.ToString(value), isWholeWord)))
-            {
-                filtered.ImportRow(row);
-            }
-        }
-
-        return filtered;
+            : TableView;
     }
 
     private static DataTable CopyRows(DataTable table, int startIndex, int count)

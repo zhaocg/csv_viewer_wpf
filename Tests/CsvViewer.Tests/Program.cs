@@ -1,4 +1,5 @@
 using CsvViewer.Services;
+using System.Data;
 
 var arguments = TortoiseSvnDiffLauncher.BuildDiffArguments(
     @"C:\Temp\CsvViewer\Compare\main\file.csv",
@@ -31,11 +32,52 @@ AssertTrue(Directory.Exists(currentSession), "Current session cache should not b
 SvnFolderService.CleanupSessionCache(cacheRoot, "current-session");
 AssertFalse(Directory.Exists(currentSession), "Current session cache should be removed on exit.");
 
+var matcherCache = new SearchMatcherCache();
+var cachedMatcher = matcherCache.Get("alpha", isCaseSensitive: false, isWholeWord: false, isRegex: false);
+AssertSame(cachedMatcher, matcherCache.Get("alpha", isCaseSensitive: false, isWholeWord: false, isRegex: false));
+AssertNotSame(cachedMatcher, matcherCache.Get("alpha", isCaseSensitive: true, isWholeWord: false, isRegex: false));
+
+var table = new DataTable();
+table.Columns.Add("Name");
+table.Columns.Add("Value");
+table.Rows.Add("alpha", "one");
+table.Rows.Add("beta", "two");
+table.Rows.Add("gamma", "alphabet");
+
+var filtered = CsvSearchFilter.Filter(table, SearchMatcher.Create("alpha", isCaseSensitive: false, isWholeWord: false, isRegex: false), isWholeWord: false);
+AssertEqual("2", filtered.Rows.Count.ToString());
+AssertEqual("alpha", filtered.Rows[0]["Name"]?.ToString() ?? string.Empty);
+AssertEqual("gamma", filtered.Rows[1]["Name"]?.ToString() ?? string.Empty);
+
+var filterResult = CsvSearchFilter.ApplyFilterView(table, SearchMatcher.Create("alpha", isCaseSensitive: false, isWholeWord: false, isRegex: false), isWholeWord: false);
+AssertSame(table, filterResult.View.Table!);
+AssertEqual("2", filterResult.MatchCount.ToString());
+AssertEqual("2", filterResult.View.Count.ToString());
+AssertEqual("alpha", filterResult.View[0]["Name"]?.ToString() ?? string.Empty);
+AssertEqual("gamma", filterResult.View[1]["Name"]?.ToString() ?? string.Empty);
+AssertEqual("Hidden", table.Columns[CsvSearchFilter.MatchColumnName]?.ColumnMapping.ToString() ?? string.Empty);
+
 static void AssertEqual(string expected, string actual)
 {
     if (!string.Equals(expected, actual, StringComparison.Ordinal))
     {
         throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
+    }
+}
+
+static void AssertSame(object expected, object actual)
+{
+    if (!ReferenceEquals(expected, actual))
+    {
+        throw new InvalidOperationException("Expected the same object instance.");
+    }
+}
+
+static void AssertNotSame(object expected, object actual)
+{
+    if (ReferenceEquals(expected, actual))
+    {
+        throw new InvalidOperationException("Expected different object instances.");
     }
 }
 

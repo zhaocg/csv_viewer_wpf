@@ -10,6 +10,7 @@ namespace CsvViewer.Converters;
 public sealed class SearchHighlightBrushConverter : IMultiValueConverter
 {
     private static readonly Brush TransparentBrush = Brushes.Transparent;
+    private readonly SearchMatcherCache _matcherCache = new();
 
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
@@ -27,7 +28,7 @@ public sealed class SearchHighlightBrushConverter : IMultiValueConverter
         SearchMatcher matcher;
         try
         {
-            matcher = SearchMatcher.Create(keyword, isCaseSensitive, isWholeWord, isRegex);
+            matcher = _matcherCache.Get(keyword, isCaseSensitive, isWholeWord, isRegex);
         }
         catch (ArgumentException)
         {
