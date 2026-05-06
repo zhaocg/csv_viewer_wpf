@@ -57,6 +57,19 @@ AssertEqual("alpha", filterResult.View[0]["Name"]?.ToString() ?? string.Empty);
 AssertEqual("gamma", filterResult.View[1]["Name"]?.ToString() ?? string.Empty);
 AssertEqual("Hidden", table.Columns[CsvSearchFilter.MatchColumnName]?.ColumnMapping.ToString() ?? string.Empty);
 
+var rowSearchIndex = CsvRowSearchIndex.Build(table);
+var cachedMatches = rowSearchIndex.FindPlainTextMatches("ALPHA", isCaseSensitive: false);
+AssertEqual("2", cachedMatches.MatchCount.ToString());
+AssertTrue(cachedMatches.Matches[0], "First row should match cached case-insensitive search.");
+AssertFalse(cachedMatches.Matches[1], "Second row should not match cached case-insensitive search.");
+AssertTrue(cachedMatches.Matches[2], "Third row should match cached case-insensitive search.");
+AssertSame(rowSearchIndex, CsvRowSearchIndex.Build(table));
+
+var frozenFilterResult = CsvSearchFilter.ApplyFilterView(table, cachedMatches, frozenRowCount: 1);
+AssertEqual("1", frozenFilterResult.MatchCount.ToString());
+AssertEqual("1", frozenFilterResult.View.Count.ToString());
+AssertEqual("gamma", frozenFilterResult.View[0]["Name"]?.ToString() ?? string.Empty);
+
 static void AssertEqual(string expected, string actual)
 {
     if (!string.Equals(expected, actual, StringComparison.Ordinal))

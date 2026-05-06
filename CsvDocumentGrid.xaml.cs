@@ -188,7 +188,7 @@ public partial class CsvDocumentGrid : UserControl
 
     private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
     {
-        if (e.PropertyName == CsvSearchFilter.MatchColumnName)
+        if (e.PropertyName == CsvSearchFilter.MatchColumnName || e.PropertyName == CsvSearchFilter.ScrollableColumnName)
         {
             e.Cancel = true;
             return;

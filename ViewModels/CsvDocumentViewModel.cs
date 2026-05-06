@@ -231,8 +231,12 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         }
 
         var isWholeWord = IsSearchWholeWord;
-        var matches = await Task.Run(() => CsvSearchFilter.FindMatches(_sourceTable, matcher, isWholeWord));
-        var filterResult = CsvSearchFilter.ApplyFilterView(_sourceTable, matches);
+        var isRegex = IsSearchRegex;
+        var isCaseSensitive = IsSearchCaseSensitive;
+        var matches = await Task.Run(() => isRegex || isWholeWord
+            ? CsvSearchFilter.FindMatches(_sourceTable, matcher, isWholeWord)
+            : CsvRowSearchIndex.Build(_sourceTable).FindPlainTextMatches(keyword, isCaseSensitive));
+        var filterResult = CsvSearchFilter.ApplyFilterView(_sourceTable, matches, FrozenRowCount);
         SetActiveView(_sourceTable, filterResult.View);
         RowCountText = filterResult.MatchCount.ToString("N0");
         StatusText = $"搜索完成，匹配 {filterResult.MatchCount:N0} 行。";
@@ -302,7 +306,7 @@ public sealed class CsvDocumentViewModel : INotifyPropertyChanged
         }
 
         FrozenTableView = CopyRows(_sourceTable, 0, FrozenRowCount).DefaultView;
-        ScrollableTableView = ReferenceEquals(_activeTable, _sourceTable)
+        ScrollableTableView = TableView?.RowFilter == string.Empty
             ? CopyRows(_activeTable, FrozenRowCount, _activeTable.Rows.Count - FrozenRowCount).DefaultView
             : TableView;
     }
