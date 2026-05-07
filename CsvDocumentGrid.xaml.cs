@@ -31,7 +31,7 @@ public partial class CsvDocumentGrid : UserControl
     private readonly ClipboardService _clipboardService = new();
     private readonly List<DataGridColumn> _mainWidthObservedColumns = [];
     private readonly List<DataGridColumn> _frozenWidthObservedColumns = [];
-    private readonly Dictionary<PaintedCellKey, Brush> _paintedCellBrushes = [];
+    private readonly PaintedCellStore _paintedCells = new();
     private readonly CellPaintBrushConverter _cellPaintBrushConverter = new();
     private readonly Style _searchHighlightTextStyle;
     private IReadOnlyList<double>? _pendingColumnWidths;
@@ -132,7 +132,7 @@ public partial class CsvDocumentGrid : UserControl
 
     private void CsvDocumentGrid_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        _paintedCellBrushes.Clear();
+        _paintedCells.Clear();
         CellPaintVersion++;
         ApplyDocumentFrozenState();
         QueueColumnLayoutSync();
@@ -446,6 +446,7 @@ public partial class CsvDocumentGrid : UserControl
 
         ApplyColumnWidths(CsvDataGrid, widths);
         ApplyColumnWidths(FrozenRowsDataGrid, widths);
+        QueueColumnLayoutSync();
     }
 
     private double MeasureCellWidth(DataGrid dataGrid, DataRowView rowView, string columnName)
@@ -516,7 +517,7 @@ public partial class CsvDocumentGrid : UserControl
                 continue;
             }
 
-            _paintedCellBrushes[new PaintedCellKey(rowIndex, columnName)] = PaintedCellBrush;
+            _paintedCells.Set(rowIndex, columnName, PaintedCellBrush);
             painted = true;
         }
 
@@ -525,14 +526,7 @@ public partial class CsvDocumentGrid : UserControl
 
     private bool TryGetCellPaintBrush(DataGrid dataGrid, DataRowView rowView, string columnName, out Brush brush)
     {
-        var rowIndex = GetVisualRowIndex(dataGrid, rowView);
-        if (rowIndex >= 0 && _paintedCellBrushes.TryGetValue(new PaintedCellKey(rowIndex, columnName), out brush!))
-        {
-            return true;
-        }
-
-        brush = Brushes.Transparent;
-        return false;
+        return _paintedCells.TryGetBrush(() => GetVisualRowIndex(dataGrid, rowView), columnName, out brush);
     }
 
     private int GetVisualRowIndex(DataGrid dataGrid, DataRowView rowView)
@@ -659,6 +653,7 @@ public partial class CsvDocumentGrid : UserControl
         }
 
         SyncColumnLayouts(CsvDataGrid, FrozenRowsDataGrid);
+        UpdateFrozenColumnSeparator();
     }
 
     private void FrozenColumnWidthChanged(object? sender, EventArgs e)
@@ -1008,8 +1003,6 @@ public partial class CsvDocumentGrid : UserControl
 
         return null;
     }
-
-    private readonly record struct PaintedCellKey(int RowIndex, string ColumnName);
 
     private sealed class CellPaintBrushConverter : IMultiValueConverter
     {

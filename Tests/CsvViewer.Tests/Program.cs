@@ -1,5 +1,8 @@
+using CsvViewer.Converters;
 using CsvViewer.Services;
 using System.Data;
+using System.Globalization;
+using System.Windows.Media;
 
 var arguments = TortoiseSvnDiffLauncher.BuildDiffArguments(
     @"C:\Temp\CsvViewer\Compare\main\file.csv",
@@ -70,6 +73,33 @@ AssertEqual("1", frozenFilterResult.MatchCount.ToString());
 AssertEqual("1", frozenFilterResult.View.Count.ToString());
 AssertEqual("gamma", frozenFilterResult.View[0]["Name"]?.ToString() ?? string.Empty);
 
+var paintedCells = new PaintedCellStore();
+var rowIndexLookups = 0;
+AssertFalse(paintedCells.TryGetBrush(() =>
+{
+    rowIndexLookups++;
+    return 0;
+}, "Name", out _), "Empty painted cell store should not report a painted cell.");
+AssertEqual("0", rowIndexLookups.ToString());
+
+var paintBrush = Brushes.Yellow;
+paintedCells.Set(2, "Name", paintBrush);
+AssertTrue(paintedCells.TryGetBrush(() =>
+{
+    rowIndexLookups++;
+    return 2;
+}, "Name", out var resolvedBrush), "Painted cell should be found after it is stored.");
+AssertEqual("1", rowIndexLookups.ToString());
+AssertSame(paintBrush, resolvedBrush);
+
+var textReads = 0;
+var lazyText = new CountingText(() => textReads++);
+var highlightBrush = new SearchHighlightBrushConverter().Convert([lazyText, string.Empty], typeof(Brush), null!, CultureInfo.InvariantCulture);
+AssertSame(Brushes.Transparent, highlightBrush);
+var highlightForeground = new SearchHighlightForegroundConverter().Convert([lazyText, string.Empty, false, false, false, Brushes.Red], typeof(Brush), null!, CultureInfo.InvariantCulture);
+AssertSame(Brushes.Red, highlightForeground);
+AssertEqual("0", textReads.ToString());
+
 static void AssertEqual(string expected, string actual)
 {
     if (!string.Equals(expected, actual, StringComparison.Ordinal))
@@ -123,4 +153,13 @@ static void AssertThrows<TException>(Action action)
     }
 
     throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
+}
+
+sealed class CountingText(Action onToString)
+{
+    public override string ToString()
+    {
+        onToString();
+        return "alpha";
+    }
 }

@@ -14,13 +14,18 @@ public sealed class SearchHighlightBrushConverter : IMultiValueConverter
 
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        var cellText = values.Length > 0 ? values[0]?.ToString() : null;
         var keyword = values.Length > 1 ? values[1]?.ToString() : null;
         var isCaseSensitive = values.Length > 2 && values[2] is true;
         var isWholeWord = values.Length > 3 && values[3] is true;
         var isRegex = values.Length > 4 && values[4] is true;
 
-        if (string.IsNullOrWhiteSpace(cellText) || string.IsNullOrWhiteSpace(keyword))
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return TransparentBrush;
+        }
+
+        var cellText = values.Length > 0 ? values[0]?.ToString() : null;
+        if (string.IsNullOrWhiteSpace(cellText))
         {
             return TransparentBrush;
         }
